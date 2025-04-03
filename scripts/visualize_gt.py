@@ -2,7 +2,6 @@ import cv2
 import pandas as pd
 import os
 from tqdm import tqdm
-import numpy as np
 from multiprocessing import Pool, cpu_count
 import time
 
@@ -89,7 +88,7 @@ def process_video(args):
 def main():
     gt_dir = "data/gt"
     video_dir = "data/videos"
-    output_dir = "data/output"
+    output_dir = "output/gt"
 
     os.makedirs(output_dir, exist_ok=True)
 
