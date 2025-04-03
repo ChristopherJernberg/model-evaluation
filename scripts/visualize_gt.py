@@ -14,7 +14,6 @@ def draw_boxes(frame, boxes_df, frame_number):
         id_num = int(box[1])
 
         cv2.rectangle(frame, (x1, y1), (x1 + w, y1 + h), (0, 255, 0), 2)
-
         cv2.putText(
             frame,
             f"{id_num}",

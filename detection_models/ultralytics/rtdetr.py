@@ -1,5 +1,5 @@
-from .base import UltralyticsModel
 from typing import Any
+from .base import UltralyticsModel
 
 
 class RTDETRModel(UltralyticsModel):

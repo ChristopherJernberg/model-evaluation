@@ -1,7 +1,8 @@
 from typing import Any
-from .base import UltralyticsModel
-from detection_models.base_models import SegmentationModel
 import numpy as np
+from .base import UltralyticsModel
+from ..base_models import SegmentationModel
+from .constants import CONFIDENCE_THRESHOLD, VERBOSE
 
 
 class SAMModel(UltralyticsModel, SegmentationModel):
@@ -31,8 +32,8 @@ class SAMModel(UltralyticsModel, SegmentationModel):
         from ultralytics import SAM
         return SAM(model_path)
     
-    def predict_segmentation(self, frame: np.ndarray) -> np.ndarray:
-        results = self.model(frame, verbose=False)
+    def predict_segmentation(self, frame: np.ndarray, verbose: bool = VERBOSE, conf: float = CONFIDENCE_THRESHOLD) -> np.ndarray:
+        results = self.model(frame, verbose=verbose, conf=conf)
         if results and results[0].masks is not None:
             return results[0].masks.data[0].cpu().numpy()
         return np.zeros(frame.shape[:2], dtype=np.uint8)

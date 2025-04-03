@@ -2,6 +2,7 @@ from .base import UltralyticsModel
 from ..base_models import PoseEstimationModel
 from typing import Any
 import numpy as np
+from .constants import CONFIDENCE_THRESHOLD, VERBOSE
 
 
 class YOLOModel(UltralyticsModel):
@@ -53,8 +54,8 @@ class YOLOPoseModel(YOLOModel, PoseEstimationModel):
         [5, 6], [5, 11], [6, 12], [11, 12]  # torso
     ]
     
-    def predict_pose(self, frame: np.ndarray) -> list[tuple[list[tuple[float, float, float]], tuple[float, float, float, float, float]]]:
-        results = self.model(frame, verbose=False)
+    def predict_pose(self, frame: np.ndarray, verbose: bool = VERBOSE, conf: float = CONFIDENCE_THRESHOLD) -> list[tuple[list[tuple[float, float, float]], tuple[float, float, float, float, float]]]:
+        results = self.model(frame, verbose=verbose, conf=conf)
         poses = []
         
         for result in results:
