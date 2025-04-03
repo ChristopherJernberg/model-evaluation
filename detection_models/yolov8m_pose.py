@@ -46,7 +46,7 @@ while video.isOpened():
         break
 
     start_time = perf_counter()
-    results = model(frame)
+    results = model(frame, verbose=False)
     inference_time = perf_counter() - start_time
     
     total_inference_time += inference_time
