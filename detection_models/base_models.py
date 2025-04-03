@@ -35,3 +35,20 @@ class PoseEstimationModel(DetectionModel):
                 bbox: Tuple of (x1, y1, w, h, conf) for person detection
         """
         pass
+
+
+class SegmentationModel(DetectionModel):
+    """Extension for models that can also segment images"""
+    
+    @abstractmethod
+    def predict_segmentation(self, frame: np.ndarray) -> np.ndarray:
+        """
+        Perform segmentation on a single frame
+        
+        Args:
+            frame: numpy array of shape (H, W, C) in BGR format
+            
+        Returns:
+            numpy array of shape (H, W) with segmentation mask
+        """
+        pass
