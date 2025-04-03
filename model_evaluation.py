@@ -3,11 +3,12 @@ import cv2
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
-from detection_models.base_models import DetectionModel
 from detection_models.ultralytics import YOLOPoseModel
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+from multiprocessing import Pool
+from multiprocessing import cpu_count
 
 
 @dataclass
@@ -132,12 +133,17 @@ def process_video(video_path, gt_path, model, output_path=None):
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     
     frame_limit = 60 * fps
+    video_id = os.path.basename(video_path).split(".")[0]
     
     if output_path:
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         out = cv2.VideoWriter(output_path, fourcc, fps, (width*2, height))
     
-    for frame_idx in tqdm(range(0, frame_limit), desc=f"Processing {os.path.basename(video_path)}"):
+    pbar = tqdm(total=frame_limit, 
+                desc=f"Processing video {video_id}", 
+                position=int(video_id))
+    
+    for frame_idx in range(0, frame_limit):
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
         ret, frame = cap.read()
         if not ret:
@@ -182,7 +188,10 @@ def process_video(video_path, gt_path, model, output_path=None):
         metrics.total_matches += frame_metrics.matches
         metrics.total_false_positives += frame_metrics.false_positives
         metrics.total_false_negatives += frame_metrics.false_negatives
+        
+        pbar.update(1)
     
+    pbar.close()
     cap.release()
     if output_path:
         out.release()
@@ -192,8 +201,8 @@ def process_video(video_path, gt_path, model, output_path=None):
 
 
 class ModelEvaluator:
-    def __init__(self, model: DetectionModel, output_dir: Optional[Path] = None):
-        self.model = model
+    def __init__(self, model_path: str, output_dir: Optional[Path] = None):
+        self.model_path = model_path
         self.output_dir = Path(output_dir) if output_dir else None
         if self.output_dir:
             self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -204,40 +213,59 @@ class ModelEvaluator:
             raise FileNotFoundError(f"Video file not found: {video_path}")
         if not gt_path.exists():
             raise FileNotFoundError(f"Ground truth file not found: {gt_path}")
+        
+        model = YOLOPoseModel(self.model_path)
             
         output_path = None
         if self.output_dir:
             output_path = self.output_dir / f"{video_path.stem}_comparison.mp4"
             
-        return process_video(str(video_path), str(gt_path), self.model, str(output_path) if output_path else None)
+        return process_video(str(video_path), str(gt_path), model, str(output_path) if output_path else None)
     
-    def evaluate_dataset(self, data_dir: Path) -> dict[int, Metrics]:
-        """Evaluate model performance on all videos in dataset"""
+    def evaluate_dataset(self, data_dir: Path, num_workers: int = None) -> dict[int, Metrics]:
+        """
+        Evaluate model performance on all videos in dataset using parallel processing
+        """
         video_dir = data_dir / "videos"
         gt_dir = data_dir / "gt"
         
-        results = {}
-        for i in range(1, 5):  # Could be parameterized if needed
+        process_args = []
+        for i in range(1, 5):
             video_path = video_dir / f"{i}.mp4"
             gt_path = gt_dir / f"{i}.csv"
-            
-            if not video_path.exists() or not gt_path.exists():
-                print(f"Skipping video {i} - files not found")
-                continue
-                
-            results[i] = self.evaluate_video(video_path, gt_path)
-            
-        return results
+            if video_path.exists() and gt_path.exists():
+                process_args.append((str(video_path), str(gt_path), self.model_path, 
+                                   str(self.output_dir / f"{i}_comparison.mp4") if self.output_dir else None))
+        
+        if not process_args:
+            print("No valid videos found in dataset")
+            return {}
+        
+        num_workers = num_workers or max(1, cpu_count() - 1)
+        print(f"\nProcessing {len(process_args)} videos using {num_workers} processes...")
+        
+        with Pool(processes=num_workers) as pool:
+            results = pool.starmap(process_video_parallel, process_args)
+        
+        return {i+1: metrics for i, metrics in enumerate(results) if metrics is not None}
+
+def process_video_parallel(video_path, gt_path, model_path, output_path):
+    """Wrapper function for parallel processing"""
+    try:
+        model = YOLOPoseModel(model_path)
+        return process_video(video_path, gt_path, model, output_path)
+    except Exception as e:
+        print(f"Error processing video {os.path.basename(video_path)}: {e}")
+        return None
 
 def main():
     import time
     start_time = time.perf_counter()
     
-    model = YOLOPoseModel('yolov8m-pose')
-    evaluator = ModelEvaluator(model, output_dir="output/compare")
+    evaluator = ModelEvaluator('yolov8m-pose', output_dir="output/compare")
     
-    # Evaluate all videos in dataset
-    results = evaluator.evaluate_dataset(Path("data"))
+    # Evaluate all videos in dataset using parallel processing
+    results = evaluator.evaluate_dataset(Path("data"), num_workers=None)
     
     print("\nEvaluation Results:")
     print("=" * 50)
