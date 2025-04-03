@@ -1,1 +1,54 @@
+.DS_Store
+.DS_Store?
+._*
+
+# Model files
+*.pth
+*.h5
+*.pkl
+*.model
+*.ckpt
+*.bin
+*.tar
+*.gz
+*.zip
+*.t7
+*.tgz
+*.weights
+
+*.npy
+*.npz
+*.hdf5
+*.mat
+*.data
+*.db
+
+checkpoints/
+weights/
+models/
+pretrained/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+env/
+venv/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Ruff
+.ruff_cache/
+
+data/
+output/
+models/*.pth
+models/
 *.mp4
