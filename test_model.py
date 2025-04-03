@@ -1,10 +1,10 @@
 import os
-from ultralytics import YOLO
 import cv2
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
 from collections import defaultdict
+from detection_models.ultralytics import YOLOPoseModel
 
 def calculate_iou(box1, box2):
     """Calculate IoU between two boxes [x1,y1,w,h]"""
@@ -109,13 +109,7 @@ def process_video(video_path, gt_path, model, output_path=None):
         for _, row in frame_gt.iterrows():
             gt_boxes.append([row['bb_left'], row['bb_top'], row['bb_width'], row['bb_height']])
         
-        results = model(frame, verbose=False)
-        pred_boxes = []
-        for result in results:
-            boxes = result.boxes
-            for box in boxes:
-                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                pred_boxes.append([x1, y1, x2-x1, y2-y1])
+        pred_boxes = model.predict(frame)
         
         gt_frame = draw_boxes_gt(frame, gt_boxes)
         pred_frame = draw_boxes_pred(frame, pred_boxes)
@@ -167,8 +161,7 @@ def process_video(video_path, gt_path, model, output_path=None):
     return metrics
 
 def main(): 
-    model = YOLO('models/yolov8m-pose.pt')
-    model.to('mps')
+    model = YOLOPoseModel('yolov8m-pose')
     
     output_dir = "output/compare"
     os.makedirs(output_dir, exist_ok=True)
