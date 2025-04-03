@@ -1,66 +1,23 @@
-import numpy as np
-from ultralytics import YOLO
-from models import PoseEstimationModel
-from tqdm import tqdm
-
-class YOLOv8PoseModel(PoseEstimationModel):
-    KEYPOINT_CONNECTIONS = [
-        [5, 7], [7, 9], [6, 8], [8, 10],  # arms
-        [11, 13], [13, 15], [12, 14], [14, 16],  # legs
-        [5, 6], [5, 11], [6, 12], [11, 12]  # torso
-    ]
-    
-    def __init__(self, model_path: str, device: str = 'mps'):
-        self.model = YOLO(model_path)
-        self.model.to(device)
-    
-    def predict(self, frame: np.ndarray) -> list[tuple[float, float, float, float, float]]:
-        results = self.model(frame, verbose=False)
-        detections = []
-        
-        for result in results:
-            boxes = result.boxes
-            for box in boxes:
-                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                conf = float(box.conf[0])
-                w = x2 - x1
-                h = y2 - y1
-                detections.append((x1, y1, w, h, conf))
-        
-        return detections
-    
-    def predict_pose(self, frame: np.ndarray) -> list[tuple[list[tuple[float, float, float]], tuple[float, float, float, float, float]]]:
-        results = self.model(frame, verbose=False)
-        poses = []
-        
-        for result in results:
-            boxes = result.boxes
-            keypoints = result.keypoints
-            
-            if keypoints is not None:
-                for box, kpts in zip(boxes, keypoints):
-                    x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                    conf = float(box.conf[0])
-                    w = x2 - x1
-                    h = y2 - y1
-                    bbox = (x1, y1, w, h, conf)
-                    
-                    kpts_data = kpts.data[0].cpu().numpy()
-                    keypoints_list = [(float(x), float(y), float(c)) for x, y, c in kpts_data]
-                    poses.append((keypoints_list, bbox))
-        
-        return poses
+import os
+import sys
+from pathlib import Path
 
 if __name__ == "__main__":
-    import os
-    from time import perf_counter
-    import cv2
+    current_dir = Path(__file__).parent
+    parent_dir = current_dir.parent
+    sys.path.append(str(parent_dir))
 
-    MODEL_PATH = "models/yolov8m-pose.pt"
+from tqdm import tqdm
+from detection_models.ultralytics import YOLOPoseModel
+
+
+if __name__ == "__main__":
+    import cv2
+    from time import perf_counter
+
+    model = YOLOPoseModel('yolov8m-pose')
     VIDEO_PATH = "data/videos/2.mp4"
     STOP_TIME = 60
-
-    model = YOLOv8PoseModel(MODEL_PATH)
 
     video = cv2.VideoCapture(VIDEO_PATH)
     width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -105,7 +62,7 @@ if __name__ == "__main__":
                 if conf > 0.5:
                     cv2.circle(frame, (int(x), int(y)), 4, (0, 0, 255), -1)
             
-            for connection in YOLOv8PoseModel.KEYPOINT_CONNECTIONS:
+            for connection in YOLOPoseModel.KEYPOINT_CONNECTIONS:
                 idx1, idx2 = connection
                 if idx1 < len(keypoints) and idx2 < len(keypoints):
                     x1, y1, conf1 = keypoints[idx1]
