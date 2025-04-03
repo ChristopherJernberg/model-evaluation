@@ -3,10 +3,45 @@ import cv2
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
-from collections import defaultdict
+from detection_models.base_models import DetectionModel
 from detection_models.ultralytics import YOLOPoseModel
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
 
-def calculate_iou(box1, box2):
+
+@dataclass
+class Metrics:
+    # Frame-level counts
+    matches: int = 0
+    false_positives: int = 0
+    false_negatives: int = 0
+    
+    # Video-level accumulated counts
+    total_matches: int = 0
+    total_false_positives: int = 0
+    total_false_negatives: int = 0
+    
+    # Calculated rates
+    precision: float = 0.0
+    recall: float = 0.0
+    f1_score: float = 0.0
+
+    def update_rates(self) -> None:
+        total_gt = self.total_matches + self.total_false_negatives
+        total_pred = self.total_matches + self.total_false_positives
+        
+        self.precision = self.total_matches / total_pred if total_pred > 0 else 0.0
+        self.recall = self.total_matches / total_gt if total_gt > 0 else 0.0
+        
+        if self.precision + self.recall > 0:
+            self.f1_score = 2 * (self.precision * self.recall) / (self.precision + self.recall)
+
+
+BoundingBox = tuple[float, float, float, float]  # x1, y1, w, h
+Detection = tuple[float, float, float, float, float]  # x1, y1, w, h, conf
+
+def calculate_iou(box1: BoundingBox, box2: BoundingBox) -> float:
     """Calculate IoU between two boxes [x1,y1,w,h]"""
     b1_x1, b1_y1 = box1[0], box1[1]
     b1_x2, b1_y2 = box1[0] + box1[2], box1[1] + box1[3]
@@ -30,7 +65,11 @@ def calculate_iou(box1, box2):
     
     return intersection / union if union > 0 else 0
 
-def evaluate_detections(gt_boxes, pred_boxes, iou_threshold=0.5):
+def evaluate_detections(
+    gt_boxes: list[BoundingBox], 
+    pred_boxes: list[Detection],
+    iou_threshold: float = 0.5
+) -> Metrics:
     """Evaluate detections for a single frame"""
     matches = []
     unmatched_gt = list(range(len(gt_boxes)))
@@ -58,11 +97,11 @@ def evaluate_detections(gt_boxes, pred_boxes, iou_threshold=0.5):
         else:
             break
     
-    return {
-        'matches': len(matches),
-        'false_positives': len(unmatched_pred),
-        'false_negatives': len(unmatched_gt)
-    }
+    return Metrics(
+        matches=len(matches),
+        false_positives=len(unmatched_pred),
+        false_negatives=len(unmatched_gt)
+    )
 
 def draw_boxes_gt(frame, boxes, color=(0, 255, 0)):
     """Draw ground truth boxes"""
@@ -85,7 +124,7 @@ def draw_boxes_pred(frame, boxes, color=(0, 0, 255)):
 def process_video(video_path, gt_path, model, output_path=None):
     """Process a single video and evaluate against ground truth"""
     gt_df = pd.read_csv(gt_path)
-    metrics = defaultdict(int)
+    metrics = Metrics()
     
     cap = cv2.VideoCapture(video_path)
     fps = int(cap.get(cv2.CAP_PROP_FPS))
@@ -140,65 +179,90 @@ def process_video(video_path, gt_path, model, output_path=None):
             out.write(combined_frame)
         
         frame_metrics = evaluate_detections(gt_boxes, pred_boxes)
-        metrics['total_matches'] += frame_metrics['matches']
-        metrics['total_false_positives'] += frame_metrics['false_positives']
-        metrics['total_false_negatives'] += frame_metrics['false_negatives']
+        metrics.total_matches += frame_metrics.matches
+        metrics.total_false_positives += frame_metrics.false_positives
+        metrics.total_false_negatives += frame_metrics.false_negatives
     
     cap.release()
     if output_path:
         out.release()
     
-    total_gt = metrics['total_matches'] + metrics['total_false_negatives']
-    total_pred = metrics['total_matches'] + metrics['total_false_positives']
-    
-    if total_gt > 0:
-        metrics['recall'] = metrics['total_matches'] / total_gt
-    if total_pred > 0:
-        metrics['precision'] = metrics['total_matches'] / total_pred
-    if metrics['precision'] + metrics['recall'] > 0:
-        metrics['f1_score'] = 2 * (metrics['precision'] * metrics['recall']) / (metrics['precision'] + metrics['recall'])
-    
+    metrics.update_rates()
     return metrics
 
-def main(): 
-    model = YOLOPoseModel('yolov8m-pose')
+
+class ModelEvaluator:
+    def __init__(self, model: DetectionModel, output_dir: Optional[Path] = None):
+        self.model = model
+        self.output_dir = Path(output_dir) if output_dir else None
+        if self.output_dir:
+            self.output_dir.mkdir(parents=True, exist_ok=True)
     
-    output_dir = "output/compare"
-    os.makedirs(output_dir, exist_ok=True)
-    
-    results = {}
-    for i in range(1, 5):
-        video_path = f"data/videos/{i}.mp4"
-        gt_path = f"data/gt/{i}.csv"
-        output_path = os.path.join(output_dir, f"{i}_comparison.mp4")
-        
-        if not os.path.exists(video_path) or not os.path.exists(gt_path):
-            print(f"Skipping video {i} - files not found")
-            continue
+    def evaluate_video(self, video_path: Path, gt_path: Path) -> Metrics:
+        """Evaluate model performance on a single video"""
+        if not video_path.exists():
+            raise FileNotFoundError(f"Video file not found: {video_path}")
+        if not gt_path.exists():
+            raise FileNotFoundError(f"Ground truth file not found: {gt_path}")
             
-        results[i] = process_video(video_path, gt_path, model, output_path)
+        output_path = None
+        if self.output_dir:
+            output_path = self.output_dir / f"{video_path.stem}_comparison.mp4"
+            
+        return process_video(str(video_path), str(gt_path), self.model, str(output_path) if output_path else None)
+    
+    def evaluate_dataset(self, data_dir: Path) -> dict[int, Metrics]:
+        """Evaluate model performance on all videos in dataset"""
+        video_dir = data_dir / "videos"
+        gt_dir = data_dir / "gt"
+        
+        results = {}
+        for i in range(1, 5):  # Could be parameterized if needed
+            video_path = video_dir / f"{i}.mp4"
+            gt_path = gt_dir / f"{i}.csv"
+            
+            if not video_path.exists() or not gt_path.exists():
+                print(f"Skipping video {i} - files not found")
+                continue
+                
+            results[i] = self.evaluate_video(video_path, gt_path)
+            
+        return results
+
+def main():
+    import time
+    start_time = time.perf_counter()
+    
+    model = YOLOPoseModel('yolov8m-pose')
+    evaluator = ModelEvaluator(model, output_dir="output/compare")
+    
+    # Evaluate all videos in dataset
+    results = evaluator.evaluate_dataset(Path("data"))
     
     print("\nEvaluation Results:")
     print("=" * 50)
     for video_id, metrics in results.items():
         print(f"\nVideo {video_id}:")
-        print(f"Precision: {metrics.get('precision', 0):.4f}")
-        print(f"Recall: {metrics.get('recall', 0):.4f}")
-        print(f"F1 Score: {metrics.get('f1_score', 0):.4f}")
-        print(f"True Positives: {metrics['total_matches']}")
-        print(f"False Positives: {metrics['total_false_positives']}")
-        print(f"False Negatives: {metrics['total_false_negatives']}")
+        print(f"Precision: {metrics.precision:.4f}")
+        print(f"Recall: {metrics.recall:.4f}")
+        print(f"F1 Score: {metrics.f1_score:.4f}")
+        print(f"True Positives: {metrics.total_matches}")
+        print(f"False Positives: {metrics.total_false_positives}")
+        print(f"False Negatives: {metrics.total_false_negatives}")
     
     avg_metrics = {
-        'precision': np.mean([m['precision'] for m in results.values() if 'precision' in m]),
-        'recall': np.mean([m['recall'] for m in results.values() if 'recall' in m]),
-        'f1_score': np.mean([m['f1_score'] for m in results.values() if 'f1_score' in m])
+        'precision': np.mean([m.precision for m in results.values() if hasattr(m, 'precision')]),
+        'recall': np.mean([m.recall for m in results.values() if hasattr(m, 'recall')]),
+        'f1_score': np.mean([m.f1_score for m in results.values() if hasattr(m, 'f1_score')])
     }
     
     print("\nOverall Average Metrics:")
     print(f"Average Precision: {avg_metrics['precision']:.4f}")
     print(f"Average Recall: {avg_metrics['recall']:.4f}")
     print(f"Average F1 Score: {avg_metrics['f1_score']:.4f}")
+
+    end_time = time.perf_counter()
+    print(f"Total time taken: {end_time - start_time:.2f} seconds")
 
 if __name__ == "__main__":
     main()
