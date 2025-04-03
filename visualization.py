@@ -48,23 +48,23 @@ def process_video(args):
         else:
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
 
-        out = cv2.VideoWriter(output_path, fourcc, fps / 5, (width, height))
+        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-        frame_numbers = np.arange(0, last_frame + 1, 5)
+        frame_number = 0
         video_id = os.path.basename(video_path).split(".")[0]
 
-        for frame_number in tqdm(
-            frame_numbers, desc=f"Processing video {video_id}", position=int(video_id)
-        ):
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
-            ret, frame = cap.read()
+        pbar = tqdm(total=last_frame+1, desc=f"Processing video {video_id}", position=int(video_id))
 
+        while cap.isOpened() and frame_number <= last_frame:
+            ret, frame = cap.read()
             if not ret:
                 break
 
-            frame_with_boxes = draw_boxes(frame, gt_df, frame_number)
+            if frame_number in gt_df["frame"].values:
+                frame = draw_boxes(frame, gt_df, frame_number)
+
             cv2.putText(
-                frame_with_boxes,
+                frame,
                 f"Frame: {frame_number}",
                 (50, 50),
                 cv2.FONT_HERSHEY_SIMPLEX,
@@ -73,8 +73,11 @@ def process_video(args):
                 2,
             )
 
-            out.write(frame_with_boxes)
+            out.write(frame)
+            pbar.update(1)
+            frame_number += 1
 
+        pbar.close()
         cap.release()
         out.release()
         return f"Completed video {video_id}"
@@ -106,7 +109,7 @@ def main():
 
         process_args.append((video_path, gt_path, output_path))
 
-    num_processes = max(1, cpu_count() - 2)
+    num_processes = max(1, cpu_count() - 1)
     print(f"\nProcessing {len(process_args)} videos using {num_processes} processes...")
 
     start_time = time.perf_counter()
