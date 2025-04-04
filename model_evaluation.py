@@ -5,10 +5,11 @@ import numpy as np
 from tqdm import tqdm
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Literal
+from typing import Literal
 from multiprocessing import Pool, cpu_count
 from detection_models.base_models import Detector, Detection, BoundingBox
 from detection_models.ultralytics import YOLOPoseModel, YOLOModel, RTDETRModel, SAMModel
+from visualization import DetectionVisualizer
 
 ModelType = Literal["yolo-pose", "yolo", "rtdetr", "sam"]
 
@@ -122,27 +123,12 @@ def evaluate_detections(
         false_negatives=len(unmatched_gt)
     )
 
-def draw_boxes_gt(frame, boxes, color=(0, 255, 0)):
-    frame_copy = frame.copy()
-    for box in boxes:
-        x1, y1 = int(box[0]), int(box[1])
-        w, h = int(box[2]), int(box[3])
-        cv2.rectangle(frame_copy, (x1, y1), (x1 + w, y1 + h), color, 2)
-    return frame_copy
-
-def draw_boxes_pred(frame, boxes, color=(0, 0, 255)):
-    frame_copy = frame.copy()
-    for box in boxes:
-        x1, y1 = int(box[0]), int(box[1])
-        w, h = int(box[2]), int(box[3])
-        cv2.rectangle(frame_copy, (x1, y1), (x1 + w, y1 + h), color, 2)
-    return frame_copy
-
 def process_video(
     video_path: str,
     gt_path: str,
     model: Detector,
-    output_path: str | None = None
+    output_path: str | None = None,
+    visualize: bool = False
 ) -> Metrics:
     """Process a single video and evaluate against ground truth"""
     gt_df = pd.read_csv(gt_path)
@@ -156,9 +142,13 @@ def process_video(
     frame_limit = 60 * fps
     video_id = os.path.basename(video_path).split(".")[0]
     
-    if output_path:
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(output_path, fourcc, fps, (width*2, height))
+    visualizer = None
+    if visualize:
+        visualizer = DetectionVisualizer(
+            output_path=output_path,
+            model_name=model.model_name
+        )
+        visualizer.setup_video_writer(fps, width, height)
     
     pbar = tqdm(total=frame_limit, 
                 desc=f"Processing video {video_id}", 
@@ -177,33 +167,11 @@ def process_video(
         
         pred_boxes = model.predict(frame)
         
-        gt_frame = draw_boxes_gt(frame, gt_boxes)
-        pred_frame = draw_boxes_pred(frame, pred_boxes)
-        
-        cv2.putText(gt_frame, f"Frame: {frame_idx}", 
-                   (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        cv2.putText(pred_frame, f"Frame: {frame_idx}", 
-                   (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-        
-        combined_frame = np.hstack((gt_frame, pred_frame))
-        
-        label_y = 30
-        gt_label = "Ground Truth"
-        gt_label_size = cv2.getTextSize(gt_label, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)[0]
-        gt_label_x = (width - gt_label_size[0]) // 2
-        cv2.putText(combined_frame, gt_label, 
-                   (gt_label_x, label_y), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        
-        pred_label = "Predictions"
-        pred_label_size = cv2.getTextSize(pred_label, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)[0]
-        pred_label_x = width + (width - pred_label_size[0]) // 2
-        cv2.putText(combined_frame, pred_label, 
-                   (pred_label_x, label_y), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-        
-        if output_path:
-            out.write(combined_frame)
+        if visualizer and output_path:
+            comparison_frame = visualizer.create_comparison_frame(
+                frame, gt_boxes, pred_boxes, frame_idx
+            )
+            visualizer.write_frame(comparison_frame)
         
         frame_metrics = evaluate_detections(gt_boxes, pred_boxes)
         metrics.total_matches += frame_metrics.matches
@@ -214,18 +182,24 @@ def process_video(
     
     pbar.close()
     cap.release()
-    if output_path:
-        out.release()
+    if visualizer:
+        visualizer.release()
     
     metrics.update_rates()
     return metrics
 
 
 class ModelEvaluator:
-    def __init__(self, model_config: ModelConfig, output_dir: Optional[Path] = None):
+    def __init__(
+        self, 
+        model_config: ModelConfig, 
+        output_dir: Path | None = None,
+        visualize: bool = False
+    ):
         self.model_config = model_config
         self.output_dir = Path(output_dir) if output_dir else None
-        if self.output_dir:
+        self.visualize = visualize
+        if self.output_dir and self.visualize:
             self.output_dir.mkdir(parents=True, exist_ok=True)
     
     def evaluate_video(self, video_path: Path, gt_path: Path) -> Metrics:
@@ -238,10 +212,16 @@ class ModelEvaluator:
         model = create_model(self.model_config)
             
         output_path = None
-        if self.output_dir:
+        if self.output_dir and self.visualize:
             output_path = self.output_dir / f"{video_path.stem}_comparison.mp4"
             
-        return process_video(str(video_path), str(gt_path), model, str(output_path) if output_path else None)
+        return process_video(
+            str(video_path), 
+            str(gt_path), 
+            model, 
+            str(output_path) if output_path else None,
+            visualize=self.visualize
+        )
     
     def evaluate_dataset(self, data_dir: Path, num_workers: int = None) -> dict[int, Metrics]:
         """
@@ -255,8 +235,14 @@ class ModelEvaluator:
             video_path = video_dir / f"{i}.mp4"
             gt_path = gt_dir / f"{i}.csv"
             if video_path.exists() and gt_path.exists():
-                process_args.append((str(video_path), str(gt_path), self.model_config, 
-                                   str(self.output_dir / f"{i}_comparison.mp4") if self.output_dir else None))
+                output_path = str(self.output_dir / f"{i}_comparison.mp4") if self.output_dir and self.visualize else None
+                process_args.append((
+                    str(video_path), 
+                    str(gt_path), 
+                    self.model_config,
+                    output_path,
+                    self.visualize
+                ))
         
         if not process_args:
             print("No valid videos found in dataset")
@@ -270,11 +256,11 @@ class ModelEvaluator:
         
         return {i+1: metrics for i, metrics in enumerate(results) if metrics is not None}
 
-def process_video_parallel(video_path, gt_path, model_config, output_path):
+def process_video_parallel(video_path, gt_path, model_config, output_path, visualize):
     """Wrapper function for parallel processing"""
     try:
         model = create_model(model_config)
-        return process_video(video_path, gt_path, model, output_path)
+        return process_video(video_path, gt_path, model, output_path, visualize)
     except Exception as e:
         print(f"Error processing video {os.path.basename(video_path)}: {e}")
         return None
@@ -291,7 +277,7 @@ def main():
         iou_threshold=0.45
     )
     
-    evaluator = ModelEvaluator(model_config, output_dir="output/compare")
+    evaluator = ModelEvaluator(model_config, output_dir="output/compare", visualize=False)
     
     # Evaluate all videos in dataset using parallel processing
     results = evaluator.evaluate_dataset(Path("data"), num_workers=None)
