@@ -1,7 +1,7 @@
 .PHONY: lint format
 
 lint:
-	ruff check --fix --show-fixes .
+	ruff check .
 
 format:
 	ruff check --select I --fix --show-fixes .

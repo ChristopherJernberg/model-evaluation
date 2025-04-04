@@ -2,7 +2,6 @@ import os
 from dataclasses import dataclass
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
-from typing import Literal
 
 import cv2
 import numpy as np
@@ -10,33 +9,21 @@ import pandas as pd
 from tqdm import tqdm
 
 from detection_models.base_models import BoundingBox, Detection, Detector
-from detection_models.ultralytics import RTDETRModel, SAMModel, YOLOModel, YOLOPoseModel
+from detection_models.registry import ModelRegistry
 from visualization import DetectionVisualizer
-
-ModelType = Literal["yolo-pose", "yolo", "rtdetr", "sam"]
 
 
 @dataclass
 class ModelConfig:
-  type: ModelType
-  path: str
+  name: str  # model name (e.g., "yolov8m-pose")
   device: str = "mps"  # or "cuda" or "cpu"
   conf_threshold: float = 0.2
   iou_threshold: float = 0.45
 
 
-MODEL_REGISTRY: dict[ModelType, type[Detector]] = {
-  "yolo-pose": YOLOPoseModel,
-  "yolo": YOLOModel,
-  "rtdetr": RTDETRModel,
-  "sam": SAMModel,
-}
-
-
 def create_model(config: ModelConfig) -> Detector:
-  if config.type not in MODEL_REGISTRY:
-    raise ValueError(f"Unknown model type: {config.type}")
-  return MODEL_REGISTRY[config.type](config.path, device=config.device)
+  """Create a detector model based on the model name"""
+  return ModelRegistry.create_model(config.name, config.device, config.conf_threshold, config.iou_threshold)
 
 
 @dataclass
@@ -271,9 +258,10 @@ def main():
 
   start_time = time.perf_counter()
 
+  model_name = "yolov8m-pose"
+
   model_config = ModelConfig(
-    type="yolo-pose",
-    path="yolov8m-pose",
+    name=model_name,
     device="mps",
     conf_threshold=0.2,
     iou_threshold=0.45,
@@ -307,7 +295,7 @@ def main():
   print(f"Average F1 Score: {avg_metrics['f1_score']:.4f}")
 
   end_time = time.perf_counter()
-  print(f"Total time taken: {end_time - start_time:.2f} seconds")
+  print(f"\nTotal time taken: {end_time - start_time:.2f} seconds")
 
 
 if __name__ == "__main__":

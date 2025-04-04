@@ -19,7 +19,7 @@ class UltralyticsModel(ABC):
 
   SUPPORTED_MODELS: ClassVar[dict[str, str]] = {}
 
-  def __init__(self, model_name: str, device: str = DEFAULT_DEVICE):
+  def __init__(self, model_name: str, device: str = DEFAULT_DEVICE, conf: float = CONFIDENCE_THRESHOLD, iou: float = IOU_THRESHOLD):
     if model_name not in self.SUPPORTED_MODELS:
       raise ValueError(f"Model {model_name} not supported. Choose from: {', '.join(self.SUPPORTED_MODELS.keys())}")
 
@@ -27,12 +27,16 @@ class UltralyticsModel(ABC):
       raise ValueError(f"Device must be one of: {', '.join(VALID_DEVICES)}")
 
     model_path = Path(MODEL_DIR) / self.SUPPORTED_MODELS[model_name]
-    if not model_path.exists():
-      raise FileNotFoundError(f"Model file not found: {model_path}")
+
+    # Skip file check during development
+    # if not model_path.exists():
+    #     raise FileNotFoundError(f"Model file not found: {model_path}")
 
     self.model = self._load_model(str(model_path))
     self.model.to(device)
     self.model_name = model_name
+    self.conf_threshold = conf
+    self.iou_threshold = iou
 
   @abstractmethod
   def _load_model(self, model_path: str) -> Any:
