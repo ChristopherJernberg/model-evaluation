@@ -3,13 +3,34 @@ import cv2
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
-from detection_models.ultralytics import YOLOPoseModel
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
-from multiprocessing import Pool
-from multiprocessing import cpu_count
+from typing import Optional, Literal
+from multiprocessing import Pool, cpu_count
+from detection_models.base_models import Detector, Detection, BoundingBox
+from detection_models.ultralytics import YOLOPoseModel, YOLOModel, RTDETRModel, SAMModel
 
+ModelType = Literal["yolo-pose", "yolo", "rtdetr", "sam"]
+
+@dataclass
+class ModelConfig:
+    type: ModelType
+    path: str
+    device: str = "mps"  # or "cuda" or "cpu"
+    conf_threshold: float = 0.2
+    iou_threshold: float = 0.45
+
+MODEL_REGISTRY: dict[ModelType, type[Detector]] = {
+    "yolo-pose": YOLOPoseModel,
+    "yolo": YOLOModel,
+    "rtdetr": RTDETRModel,
+    "sam": SAMModel
+}
+
+def create_model(config: ModelConfig) -> Detector:
+    if config.type not in MODEL_REGISTRY:
+        raise ValueError(f"Unknown model type: {config.type}")
+    return MODEL_REGISTRY[config.type](config.path, device=config.device)
 
 @dataclass
 class Metrics:
@@ -38,9 +59,6 @@ class Metrics:
         if self.precision + self.recall > 0:
             self.f1_score = 2 * (self.precision * self.recall) / (self.precision + self.recall)
 
-
-BoundingBox = tuple[float, float, float, float]  # x1, y1, w, h
-Detection = tuple[float, float, float, float, float]  # x1, y1, w, h, conf
 
 def calculate_iou(box1: BoundingBox, box2: BoundingBox) -> float:
     """Calculate IoU between two boxes [x1,y1,w,h]"""
@@ -105,7 +123,6 @@ def evaluate_detections(
     )
 
 def draw_boxes_gt(frame, boxes, color=(0, 255, 0)):
-    """Draw ground truth boxes"""
     frame_copy = frame.copy()
     for box in boxes:
         x1, y1 = int(box[0]), int(box[1])
@@ -114,7 +131,6 @@ def draw_boxes_gt(frame, boxes, color=(0, 255, 0)):
     return frame_copy
 
 def draw_boxes_pred(frame, boxes, color=(0, 0, 255)):
-    """Draw prediction boxes"""
     frame_copy = frame.copy()
     for box in boxes:
         x1, y1 = int(box[0]), int(box[1])
@@ -122,7 +138,12 @@ def draw_boxes_pred(frame, boxes, color=(0, 0, 255)):
         cv2.rectangle(frame_copy, (x1, y1), (x1 + w, y1 + h), color, 2)
     return frame_copy
 
-def process_video(video_path, gt_path, model, output_path=None):
+def process_video(
+    video_path: str,
+    gt_path: str,
+    model: Detector,
+    output_path: str | None = None
+) -> Metrics:
     """Process a single video and evaluate against ground truth"""
     gt_df = pd.read_csv(gt_path)
     metrics = Metrics()
@@ -201,8 +222,8 @@ def process_video(video_path, gt_path, model, output_path=None):
 
 
 class ModelEvaluator:
-    def __init__(self, model_path: str, output_dir: Optional[Path] = None):
-        self.model_path = model_path
+    def __init__(self, model_config: ModelConfig, output_dir: Optional[Path] = None):
+        self.model_config = model_config
         self.output_dir = Path(output_dir) if output_dir else None
         if self.output_dir:
             self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -214,7 +235,7 @@ class ModelEvaluator:
         if not gt_path.exists():
             raise FileNotFoundError(f"Ground truth file not found: {gt_path}")
         
-        model = YOLOPoseModel(self.model_path)
+        model = create_model(self.model_config)
             
         output_path = None
         if self.output_dir:
@@ -234,7 +255,7 @@ class ModelEvaluator:
             video_path = video_dir / f"{i}.mp4"
             gt_path = gt_dir / f"{i}.csv"
             if video_path.exists() and gt_path.exists():
-                process_args.append((str(video_path), str(gt_path), self.model_path, 
+                process_args.append((str(video_path), str(gt_path), self.model_config, 
                                    str(self.output_dir / f"{i}_comparison.mp4") if self.output_dir else None))
         
         if not process_args:
@@ -249,10 +270,10 @@ class ModelEvaluator:
         
         return {i+1: metrics for i, metrics in enumerate(results) if metrics is not None}
 
-def process_video_parallel(video_path, gt_path, model_path, output_path):
+def process_video_parallel(video_path, gt_path, model_config, output_path):
     """Wrapper function for parallel processing"""
     try:
-        model = YOLOPoseModel(model_path)
+        model = create_model(model_config)
         return process_video(video_path, gt_path, model, output_path)
     except Exception as e:
         print(f"Error processing video {os.path.basename(video_path)}: {e}")
@@ -262,7 +283,15 @@ def main():
     import time
     start_time = time.perf_counter()
     
-    evaluator = ModelEvaluator('yolov8m-pose', output_dir="output/compare")
+    model_config = ModelConfig(
+        type="yolo-pose",
+        path="yolov8m-pose",
+        device="mps",
+        conf_threshold=0.2,
+        iou_threshold=0.45
+    )
+    
+    evaluator = ModelEvaluator(model_config, output_dir="output/compare")
     
     # Evaluate all videos in dataset using parallel processing
     results = evaluator.evaluate_dataset(Path("data"), num_workers=None)

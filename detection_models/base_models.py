@@ -1,54 +1,21 @@
-from abc import ABC, abstractmethod
+from typing import Protocol, runtime_checkable
 import numpy as np
 
-class DetectionModel(ABC):
-    """Base class for all detection models"""
-    
-    @abstractmethod
-    def predict(self, frame: np.ndarray) -> list[tuple[float, float, float, float, float]]:
-        """
-        Perform detection on a single frame
-        
-        Args:
-            frame: numpy array of shape (H, W, C) in BGR format
-            
-        Returns:
-            List of detections, each detection is (x1, y1, w, h, conf)
-        """
-        pass
+BoundingBox = tuple[float, float, float, float]  # x1, y1, w, h
+Detection = tuple[float, float, float, float, float]  # x1, y1, w, h, conf
+Keypoints = list[tuple[float, float, float]]  # list of (x, y, conf)
 
+@runtime_checkable
+class Detector(Protocol):
+    """Base protocol for object detection"""
+    def predict(self, frame: np.ndarray) -> list[Detection]: ...
 
-class PoseEstimationModel(DetectionModel):
-    """Extension for models that can also detect pose keypoints"""
-    
-    @abstractmethod
-    def predict_pose(self, frame: np.ndarray) -> list[tuple[list[tuple[float, float, float]], tuple[float, float, float, float, float]]]:
-        """
-        Perform pose detection on a single frame
-        
-        Args:
-            frame: numpy array of shape (H, W, C) in BGR format
-            
-        Returns:
-            List of (keypoints, bbox) where:
-                keypoints: List of (x, y, conf) for each keypoint
-                bbox: Tuple of (x1, y1, w, h, conf) for person detection
-        """
-        pass
+@runtime_checkable
+class PoseDetector(Protocol):
+    """Protocol for pose detection"""
+    def predict_pose(self, frame: np.ndarray) -> list[tuple[Keypoints, Detection]]: ...
 
-
-class SegmentationModel(DetectionModel):
-    """Extension for models that can also segment images"""
-    
-    @abstractmethod
-    def predict_segmentation(self, frame: np.ndarray) -> np.ndarray:
-        """
-        Perform segmentation on a single frame
-        
-        Args:
-            frame: numpy array of shape (H, W, C) in BGR format
-            
-        Returns:
-            numpy array of shape (H, W) with segmentation mask
-        """
-        pass
+@runtime_checkable
+class SegmentationDetector(Protocol):
+    """Protocol for segmentation"""
+    def predict_segmentation(self, frame: np.ndarray) -> np.ndarray: ...

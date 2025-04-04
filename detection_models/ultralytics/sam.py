@@ -1,11 +1,10 @@
 from typing import Any
 import numpy as np
 from .base import UltralyticsModel
-from ..base_models import SegmentationModel
 from .constants import CONFIDENCE_THRESHOLD, VERBOSE
 
 
-class SAMModel(UltralyticsModel, SegmentationModel):
+class SAMModel(UltralyticsModel):
     """Base class for Segment Anything Models"""
     
     SUPPORTED_MODELS = {

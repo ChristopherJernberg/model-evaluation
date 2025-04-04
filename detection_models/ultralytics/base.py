@@ -1,12 +1,11 @@
 from typing import Any, ClassVar
 from abc import ABC, abstractmethod
-from ..base_models import DetectionModel
 import numpy as np
 from pathlib import Path
 from .constants import MODEL_DIR, VALID_DEVICES, DEFAULT_DEVICE, CONFIDENCE_THRESHOLD, IOU_THRESHOLD, VERBOSE
 
 
-class UltralyticsModel(DetectionModel, ABC):
+class UltralyticsModel(ABC):
     """Base class for all Ultralytics models"""
     SUPPORTED_MODELS: ClassVar[dict[str, str]] = {}
     

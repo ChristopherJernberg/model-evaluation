@@ -1,5 +1,4 @@
 from .base import UltralyticsModel
-from ..base_models import PoseEstimationModel
 from typing import Any
 import numpy as np
 from .constants import CONFIDENCE_THRESHOLD, VERBOSE
@@ -32,7 +31,7 @@ class YOLOModel(UltralyticsModel):
         return YOLO(model_path)
 
 
-class YOLOPoseModel(YOLOModel, PoseEstimationModel):
+class YOLOPoseModel(YOLOModel):
     """YOLO model with pose estimation capabilities"""
     SUPPORTED_MODELS = {
         'yolov8n-pose': 'yolov8n-pose.pt',
