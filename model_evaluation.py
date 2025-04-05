@@ -129,13 +129,14 @@ def process_video(
   gt_df = pd.read_csv(gt_path)
   metrics = Metrics()
 
+  video_id = os.path.basename(video_path).split(".")[0]
+
   cap = cv2.VideoCapture(video_path)
   fps = int(cap.get(cv2.CAP_PROP_FPS))
   width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
   height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
   frame_limit = 60 * fps
-  video_id = os.path.basename(video_path).split(".")[0]
 
   visualizer = None
   if visualize:
@@ -211,12 +212,23 @@ class ModelEvaluator:
       visualize=self.visualize,
     )
 
+  def load_model(self, model_config: ModelConfig) -> None:
+    """Pre-load a model before parallel processing to avoid multiple downloads"""
+    try:
+      create_model(model_config)
+      print(f"Model {model_config.name} loaded successfully")
+    except Exception as e:
+      print(f"Error pre-loading model {model_config.name}: {e}")
+
   def evaluate_dataset(self, data_dir: Path, num_workers: int = None) -> dict[int, Metrics]:
-    """
-    Evaluate model performance on all videos in dataset using parallel processing
-    """
+    """Evaluate model performance on all videos in dataset using parallel processing"""
     video_dir = data_dir / "videos"
     gt_dir = data_dir / "gt"
+
+    if self.visualize:
+      print(f"\nVisualization enabled. Comparison videos will be saved to: {self.output_dir}")
+
+    self.load_model(self.model_config)
 
     process_args = []
     for i in range(1, 5):
@@ -262,7 +274,11 @@ def main():
 
   start_time = time.perf_counter()
 
-  model_name = "yolov8m-pose"
+  model_name = "yolov8n-seg"
+
+  # Define whether to visualize
+  visualize = False
+  output_dir = "output/compare" if visualize else None
 
   model_config = ModelConfig(
     name=model_name,
@@ -271,7 +287,7 @@ def main():
     iou_threshold=0.45,
   )
 
-  evaluator = ModelEvaluator(model_config, output_dir="output/compare", visualize=True)
+  evaluator = ModelEvaluator(model_config, output_dir=output_dir, visualize=visualize)
 
   # Evaluate all videos in dataset using parallel processing
   results = evaluator.evaluate_dataset(Path("data"), num_workers=None)
