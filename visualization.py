@@ -31,8 +31,45 @@ class DetectionVisualizer:
   def draw_boxes_gt(self, frame: np.ndarray, boxes: list[BoundingBox]) -> np.ndarray:
     return self.draw_boxes(frame, boxes, (0, 255, 0))
 
-  def draw_boxes_pred(self, frame: np.ndarray, boxes: list[Detection]) -> np.ndarray:
-    return self.draw_boxes(frame, boxes, (0, 255, 0))
+  def draw_boxes_pred(self, frame: np.ndarray, boxes: list[Detection], matched_ious: dict = None) -> np.ndarray:
+    frame_copy = frame.copy()
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.8
+    thickness = 2
+    color = (0, 255, 0)
+
+    for i, box in enumerate(boxes):
+      x1, y1 = int(box[0]), int(box[1])
+      w, h = int(box[2]), int(box[3])
+      conf = box[4] if len(box) > 4 else None
+
+      cv2.rectangle(frame_copy, (x1, y1), (x1 + w, y1 + h), color, 2)
+
+      text_parts = []
+      if conf is not None:
+        text_parts.append(f"conf: {conf:.2f}")
+
+      if matched_ious and i in matched_ious:
+        text_parts.append(f"IoU: {matched_ious[i]:.2f}")
+
+      if text_parts:
+        display_text = " | ".join(text_parts)
+        text_size = cv2.getTextSize(display_text, font, font_scale, thickness)[0]
+        text_bg_y1 = max(0, y1 - text_size[1] - 5)
+        text_bg_y2 = y1
+
+        cv2.rectangle(frame_copy, (x1, text_bg_y1), (x1 + text_size[0] + 5, text_bg_y2), color, -1)
+        cv2.putText(
+          frame_copy,
+          display_text,
+          (x1 + 2, y1 - 3),
+          font,
+          font_scale,
+          (0, 0, 0),
+          thickness,
+        )
+
+    return frame_copy
 
   def create_comparison_frame(
     self,
@@ -40,11 +77,12 @@ class DetectionVisualizer:
     gt_boxes: list[BoundingBox],
     pred_boxes: list[Detection],
     frame_idx: int,
+    matched_ious: dict = None,
   ) -> np.ndarray:
     width = frame.shape[1]
 
     gt_frame = self.draw_boxes_gt(frame, gt_boxes)
-    pred_frame = self.draw_boxes_pred(frame, pred_boxes)
+    pred_frame = self.draw_boxes_pred(frame, pred_boxes, matched_ious)
 
     font_scale = 1.2
     thickness = 2

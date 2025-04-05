@@ -79,11 +79,12 @@ def calculate_iou(box1: BoundingBox, box2: BoundingBox) -> float:
   return intersection / union if union > 0 else 0
 
 
-def evaluate_detections(gt_boxes: list[BoundingBox], pred_boxes: list[Detection], iou_threshold: float = 0.5) -> Metrics:
+def evaluate_detections(gt_boxes: list[BoundingBox], pred_boxes: list[Detection], iou_threshold: float = 0.5) -> tuple[Metrics, dict]:
   """Evaluate detections for a single frame"""
   matches = []
   unmatched_gt = list(range(len(gt_boxes)))
   unmatched_pred = list(range(len(pred_boxes)))
+  matched_ious = {}
 
   iou_matrix = np.zeros((len(gt_boxes), len(pred_boxes)))
   for i, gt_box in enumerate(gt_boxes):
@@ -102,16 +103,19 @@ def evaluate_detections(gt_boxes: list[BoundingBox], pred_boxes: list[Detection]
 
     if max_iou >= iou_threshold:
       matches.append(best_match)
+      matched_ious[best_match[1]] = max_iou
       unmatched_gt.remove(best_match[0])
       unmatched_pred.remove(best_match[1])
     else:
       break
 
-  return Metrics(
+  metrics = Metrics(
     matches=len(matches),
     false_positives=len(unmatched_pred),
     false_negatives=len(unmatched_gt),
   )
+
+  return metrics, matched_ious
 
 
 def process_video(
@@ -153,14 +157,14 @@ def process_video(
 
     pred_boxes = model.predict(frame)
 
-    if visualizer and output_path:
-      comparison_frame = visualizer.create_comparison_frame(frame, gt_boxes, pred_boxes, frame_idx)
-      visualizer.write_frame(comparison_frame)
-
-    frame_metrics = evaluate_detections(gt_boxes, pred_boxes)
+    frame_metrics, matched_ious = evaluate_detections(gt_boxes, pred_boxes)
     metrics.total_matches += frame_metrics.matches
     metrics.total_false_positives += frame_metrics.false_positives
     metrics.total_false_negatives += frame_metrics.false_negatives
+
+    if visualizer and output_path:
+      comparison_frame = visualizer.create_comparison_frame(frame, gt_boxes, pred_boxes, frame_idx, matched_ious)
+      visualizer.write_frame(comparison_frame)
 
     pbar.update(1)
 
@@ -267,7 +271,7 @@ def main():
     iou_threshold=0.45,
   )
 
-  evaluator = ModelEvaluator(model_config, output_dir="output/compare", visualize=False)
+  evaluator = ModelEvaluator(model_config, output_dir="output/compare", visualize=True)
 
   # Evaluate all videos in dataset using parallel processing
   results = evaluator.evaluate_dataset(Path("data"), num_workers=None)
