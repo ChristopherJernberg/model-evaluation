@@ -1,64 +1,63 @@
-import re
-from re import Pattern
 from typing import Callable
 
 from detection_models.base_models import Detector
 
-# Registry format: (pattern, factory_function, is_pose_capable)
-ModelRegistryEntry = tuple[Pattern, Callable[[str, str, float, float], Detector], bool]
-
 
 class ModelRegistry:
-  _registry: list[ModelRegistryEntry] = []
+  # Maps model_name -> (factory_function, is_pose_capable, category)
+  _model_map = {}
 
   @classmethod
-  def register(cls, pattern: str, is_pose_capable: bool = False):
-    """Decorator to register a model factory function"""
+  def register_model(cls, model_name: str, factory_func: Callable, is_pose_capable: bool = False, category: str = None):
+    """Register a specific model with its factory function"""
+    cls._model_map[model_name] = (factory_func, is_pose_capable, category)
 
-    def decorator(factory_func):
-      compiled_pattern = re.compile(pattern)
-      cls._registry.append((compiled_pattern, factory_func, is_pose_capable))
-      return factory_func
+  @classmethod
+  def register_models_from_class(cls, model_class, is_pose_capable: bool = False, category: str = None):
+    """Register all models from a model class's SUPPORTED_MODELS dict"""
+    category = category or model_class.__name__
+    for model_name in model_class.SUPPORTED_MODELS:
+      # Important: Use default args to capture current values
+      cls.register_model(model_name, lambda name, device, conf, iou, cls=model_class: cls(name, device=device, conf=conf, iou=iou), is_pose_capable, category)
+
+  @classmethod
+  def register_class(cls, is_pose_capable: bool = False, category: str = None):
+    """Decorator to register a model class"""
+
+    def decorator(model_class):
+      cls.register_models_from_class(model_class, is_pose_capable, category)
+      return model_class
 
     return decorator
-
-  @classmethod
-  def get_factory(cls, model_name: str) -> tuple[Callable, bool]:
-    """Find appropriate factory for the model name"""
-    for pattern, factory, is_pose in cls._registry:
-      if pattern.match(model_name):
-        return factory, is_pose
-
-    raise ValueError(f"No model provider found for '{model_name}'")
 
   @classmethod
   def create_model(cls, model_name: str, device: str, conf_threshold: float, iou_threshold: float) -> Detector:
     """Create a model instance based on the model name"""
     # Lazy load model types if registry is empty
-    if not cls._registry:
+    if not cls._model_map:
       import detection_models.ultralytics  # noqa: F401
       # Add other model types as needed
 
-    factory, _ = cls.get_factory(model_name)
+    if model_name not in cls._model_map:
+      supported_models = sorted(cls._model_map.keys())
+      raise ValueError(f"\nModel '{model_name}' not supported. Choose from:\n{', '.join(supported_models)}")
+
+    factory, _, _ = cls._model_map[model_name]
     return factory(model_name, device, conf_threshold, iou_threshold)
 
   @classmethod
   def is_pose_model(cls, model_name: str) -> bool:
     """Check if a model supports pose detection"""
-    for pattern, _, is_pose in cls._registry:
-      if pattern.match(model_name) and is_pose:
-        return True
-    return False
+    return cls._model_map.get(model_name, (None, False))[1]
 
   @classmethod
-  def list_registered_patterns(cls) -> list[str]:
-    """List all registered model patterns"""
-    return [pattern.pattern for pattern, _, _ in cls._registry]
+  def list_supported_models(cls) -> list[str]:
+    """List all supported model names"""
+    return sorted(cls._model_map.keys())
 
   @classmethod
-  def debug_registry(cls, model_name: str) -> None:
-    """Print debugging info for model matching"""
-    print(f"Trying to match model: '{model_name}'")
-    print(f"Available patterns: {cls._registry}")
-    for i, (pattern, _factory, _is_pose) in enumerate(cls._registry):
-      print(f"Pattern {i}: '{pattern.pattern}' -> Match: {bool(pattern.match(model_name))}")
+  def list_models_by_category(cls, category: str = None) -> list[str]:
+    """List all models in a category"""
+    if category is None:
+      return cls.list_supported_models()
+    return sorted([name for name, (_, _, cat) in cls._model_map.items() if cat == category])

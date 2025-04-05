@@ -1,8 +1,10 @@
 from typing import Any
 
+from ..registry import ModelRegistry
 from .base import UltralyticsModel
 
 
+@ModelRegistry.register_class(category="RTDETR")
 class RTDETRModel(UltralyticsModel):
   """Base class for RT-DETR models"""
 

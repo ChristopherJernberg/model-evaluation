@@ -2,10 +2,12 @@ from typing import Any
 
 import numpy as np
 
+from ..registry import ModelRegistry
 from .base import UltralyticsModel
 from .constants import CONFIDENCE_THRESHOLD, VERBOSE
 
 
+@ModelRegistry.register_class(category="YOLO")
 class YOLOModel(UltralyticsModel):
   """Base class for YOLO models"""
 
@@ -23,7 +25,11 @@ class YOLOModel(UltralyticsModel):
     "yolov9": "yolov9.pt",
     "yolov10": "yolov10.pt",
     "yolo11": "yolo11.pt",
-    "yolo12": "yolo12.pt",
+    "yolo12n": "yolo12n.pt",
+    "yolo12s": "yolo12s.pt",
+    "yolo12m": "yolo12m.pt",
+    "yolo12l": "yolo12l.pt",
+    "yolo12x": "yolo12x.pt",
     # ... rest of YOLO models
   }
 
@@ -33,6 +39,7 @@ class YOLOModel(UltralyticsModel):
     return YOLO(model_path)
 
 
+@ModelRegistry.register_class(is_pose_capable=True, category="YOLO-Pose")
 class YOLOPoseModel(YOLOModel):
   """YOLO model with pose estimation capabilities"""
 

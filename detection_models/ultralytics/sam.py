@@ -2,10 +2,12 @@ from typing import Any
 
 import numpy as np
 
+from ..registry import ModelRegistry
 from .base import UltralyticsModel
 from .constants import CONFIDENCE_THRESHOLD, VERBOSE
 
 
+@ModelRegistry.register_class(category="SAM")
 class SAMModel(UltralyticsModel):
   """Base class for Segment Anything Models"""
 
