@@ -79,7 +79,7 @@ def calculate_iou(box1: BoundingBox, box2: BoundingBox) -> float:
   return intersection / union if union > 0 else 0
 
 
-def evaluate_detections(gt_boxes: list[BoundingBox], pred_boxes: list[Detection], iou_threshold: float = 0.5) -> tuple[Metrics, dict]:
+def evaluate_detections(gt_boxes: list[BoundingBox], pred_boxes: list[Detection], iou_threshold: float = 0.5) -> tuple[Metrics, dict, list[int]]:
   """Evaluate detections for a single frame"""
   matches = []
   unmatched_gt = list(range(len(gt_boxes)))
@@ -115,7 +115,7 @@ def evaluate_detections(gt_boxes: list[BoundingBox], pred_boxes: list[Detection]
     false_negatives=len(unmatched_gt),
   )
 
-  return metrics, matched_ious
+  return metrics, matched_ious, unmatched_gt
 
 
 def process_video(
@@ -157,13 +157,13 @@ def process_video(
 
     pred_boxes = model.predict(frame)
 
-    frame_metrics, matched_ious = evaluate_detections(gt_boxes, pred_boxes)
+    frame_metrics, matched_ious, unmatched_gt = evaluate_detections(gt_boxes, pred_boxes)
     metrics.total_matches += frame_metrics.matches
     metrics.total_false_positives += frame_metrics.false_positives
     metrics.total_false_negatives += frame_metrics.false_negatives
 
     if visualizer and output_path:
-      comparison_frame = visualizer.create_comparison_frame(frame, gt_boxes, pred_boxes, frame_idx, matched_ious)
+      comparison_frame = visualizer.create_comparison_frame(frame, gt_boxes, pred_boxes, frame_idx, matched_ious, unmatched_gt)
       visualizer.write_frame(comparison_frame)
 
     pbar.update(1)
