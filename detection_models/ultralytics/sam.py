@@ -12,17 +12,22 @@ class SAMModel(UltralyticsModel):
   """Base class for Segment Anything Models"""
 
   SUPPORTED_MODELS = {
+    # SAM
     "sam_b": "sam_b.pt",
     "sam_l": "sam_l.pt",
+    # SAM2
     "sam2_t": "sam2_t.pt",
     "sam2_s": "sam2_s.pt",
     "sam2_b": "sam2_b.pt",
     "sam2_l": "sam2_l.pt",
+    # SAM2.1
     "sam2.1_t": "sam2.1_t.pt",
     "sam2.1_s": "sam2.1_s.pt",
     "sam2.1_b": "sam2.1_b.pt",
     "sam2.1_l": "sam2.1_l.pt",
+    # MobileSAM
     "mobile_sam": "mobile_sam.pt",
+    # FastSAM
     "FastSAM-s": "FastSAM-s.pt",
     "FastSAM-x": "FastSAM-x.pt",
   }
