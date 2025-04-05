@@ -1,4 +1,4 @@
-.PHONY: lint format
+.PHONY: lint format clean deep-clean
 
 lint:
 	ruff check .
@@ -6,3 +6,13 @@ lint:
 format:
 	ruff check --select I --fix --show-fixes .
 	ruff format .
+
+clean:
+	rm -rf output/*
+
+deep-clean: clean
+	rm -rf models/*
+	rm -rf __pycache__
+	rm -rf .ruff_cache
+	rm -rf .mypy_cache
+	rm -rf .pytest_cache
