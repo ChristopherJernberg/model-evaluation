@@ -35,8 +35,8 @@ class ModelRegistry:
     """Create a model instance based on the model name"""
     # Lazy load model types if registry is empty
     if not cls._model_map:
+      import detection_models.detr
       import detection_models.ultralytics  # noqa: F401
-      # Add other model types as needed
 
     if model_name not in cls._model_map:
       supported_models = sorted(cls._model_map.keys())
