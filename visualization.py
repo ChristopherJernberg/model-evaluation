@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-from detection_models.base_models import BoundingBox, Detection
+from detection_models.detection_interfaces import BoundingBox, Detection
 
 
 class DetectionVisualizer:

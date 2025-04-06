@@ -9,22 +9,9 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from detection_models.base_models import BoundingBox, Detection, Detector
+from detection_models.detection_interfaces import BoundingBox, Detection, Detector, ModelConfig
 from detection_models.registry import ModelRegistry
 from visualization import DetectionVisualizer
-
-
-@dataclass
-class ModelConfig:
-  name: str  # model name (e.g., "yolov8m-pose")
-  device: str = "mps"  # or "cuda" or "cpu"
-  conf_threshold: float = 0.2
-  iou_threshold: float = 0.45
-
-
-def create_model(config: ModelConfig) -> Detector:
-  """Create a detector model based on the model name"""
-  return ModelRegistry.create_model(config.name, config.device, config.conf_threshold, config.iou_threshold)
 
 
 @dataclass
@@ -197,7 +184,7 @@ class ModelEvaluator:
     if not gt_path.exists():
       raise FileNotFoundError(f"Ground truth file not found: {gt_path}")
 
-    model = create_model(self.model_config)
+    model = ModelRegistry.create_from_config(self.model_config)
 
     output_path = None
     if self.output_dir and self.visualize:
@@ -214,7 +201,7 @@ class ModelEvaluator:
   def load_model(self, model_config: ModelConfig) -> None:
     """Pre-load a model before parallel processing to avoid multiple downloads"""
     try:
-      create_model(model_config)
+      ModelRegistry.create_from_config(model_config)
       print(f"Model {model_config.name} loaded successfully")
     except Exception as e:
       print(f"Error pre-loading model {model_config.name}: {e}")
@@ -293,7 +280,7 @@ def process_video_parallel(video_path, gt_path, model_config, output_path, visua
   """Wrapper function for parallel processing"""
   try:
     progress_dict[progress_idx] = 0
-    model = create_model(model_config)
+    model = ModelRegistry.create_from_config(model_config)
     return process_video(video_path, gt_path, model, output_path, visualize, progress_idx, progress_dict)
   except Exception as e:
     print(f"Error processing video {os.path.basename(video_path)}: {e}")
@@ -305,16 +292,16 @@ def main():
 
   start_time = time.perf_counter()
 
-  model_name = "yolov8n-seg"
+  model_name = "rtdetrv2-r18vd"
 
   # Define whether to visualize
-  visualize = False
+  visualize = True
   output_dir = "output/compare" if visualize else None
 
   model_config = ModelConfig(
     name=model_name,
     device="mps",
-    conf_threshold=0.2,
+    conf_threshold=0.55,
     iou_threshold=0.45,
   )
 

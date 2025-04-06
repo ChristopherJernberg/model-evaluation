@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from transformers import RTDetrImageProcessor, RTDetrV2ForObjectDetection
 
-from detection_models.base_models import Detector
+from detection_models.detection_interfaces import Detector
 from detection_models.registry import ModelRegistry
 
 

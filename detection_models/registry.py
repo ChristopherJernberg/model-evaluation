@@ -1,6 +1,6 @@
 from typing import Callable
 
-from detection_models.base_models import Detector
+from detection_models.detection_interfaces import Detector, ModelConfig
 
 
 class ModelRegistry:
@@ -44,6 +44,11 @@ class ModelRegistry:
 
     factory, _, _ = cls._model_map[model_name]
     return factory(model_name, device, conf_threshold, iou_threshold)
+
+  @classmethod
+  def create_from_config(cls, config: ModelConfig) -> Detector:
+    """Create a model from a ModelConfig object"""
+    return cls.create_model(config.name, config.device, config.conf_threshold, config.iou_threshold)
 
   @classmethod
   def is_pose_model(cls, model_name: str) -> bool:
