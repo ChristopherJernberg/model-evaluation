@@ -36,6 +36,7 @@ class ModelRegistry:
     # Lazy load model types if registry is empty
     if not cls._model_map:
       import detection_models.detr
+      import detection_models.foundation_models
       import detection_models.ultralytics  # noqa: F401
 
     if model_name not in cls._model_map:

@@ -292,7 +292,7 @@ def main():
 
   start_time = time.perf_counter()
 
-  model_name = "rtdetrv2-r18vd"
+  model_name = "grounding-dino-base"
 
   # Define whether to visualize
   visualize = True
@@ -301,7 +301,7 @@ def main():
   model_config = ModelConfig(
     name=model_name,
     device="mps",
-    conf_threshold=0.55,
+    conf_threshold=0.5,
     iou_threshold=0.45,
   )
 
@@ -333,7 +333,14 @@ def main():
   print(f"Average F1 Score: {avg_metrics['f1_score']:.4f}")
 
   end_time = time.perf_counter()
-  print(f"\nTotal time taken: {end_time - start_time:.2f} seconds")
+  total_seconds = end_time - start_time
+
+  if total_seconds >= 60:
+    minutes = int(total_seconds // 60)
+    seconds = total_seconds % 60
+    print(f"\nTotal time taken: {minutes} minutes and {seconds:.2f} seconds")
+  else:
+    print(f"\nTotal time taken: {total_seconds:.2f} seconds")
 
 
 if __name__ == "__main__":
