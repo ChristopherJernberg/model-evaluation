@@ -31,6 +31,10 @@ class Metrics:
   recall: float = 0.0
   f1_score: float = 0.0
 
+  # Performance metrics
+  avg_inference_time: float = 0.0
+  fps: float = 0.0
+
   def update_rates(self) -> None:
     total_gt = self.total_matches + self.total_false_negatives
     total_pred = self.total_matches + self.total_false_positives
@@ -131,6 +135,9 @@ def process_video(
     visualizer = DetectionVisualizer(output_path=output_path, model_name=model.model_name)
     visualizer.setup_video_writer(fps, width, height)
 
+  total_inference_time = 0
+  frame_count = 0
+
   for frame_idx in range(frame_limit):
     cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
     ret, frame = cap.read()
@@ -142,7 +149,13 @@ def process_video(
     for _, row in frame_gt.iterrows():
       gt_boxes.append([row["bb_left"], row["bb_top"], row["bb_width"], row["bb_height"]])
 
+    inference_start = time.perf_counter()
     pred_boxes = model.predict(frame)
+    inference_end = time.perf_counter()
+
+    inference_time = inference_end - inference_start
+    total_inference_time += inference_time
+    frame_count += 1
 
     frame_metrics, matched_ious, unmatched_gt = evaluate_detections(gt_boxes, pred_boxes)
     metrics.total_matches += frame_metrics.matches
@@ -161,6 +174,10 @@ def process_video(
     visualizer.release()
 
   metrics.update_rates()
+
+  metrics.avg_inference_time = total_inference_time / frame_count if frame_count > 0 else 0
+  metrics.fps = 1 / metrics.avg_inference_time if metrics.avg_inference_time > 0 else 0
+
   return metrics
 
 
@@ -218,7 +235,7 @@ class ModelEvaluator:
 
     process_args = []
     videos = []
-    for i in range(1, 5):
+    for i in range(2, 3):
       video_path = video_dir / f"{i}.mp4"
       gt_path = gt_dir / f"{i}.csv"
       if video_path.exists() and gt_path.exists():
@@ -301,7 +318,7 @@ def main():
   model_config = ModelConfig(
     name=model_name,
     device="mps",
-    conf_threshold=0.5,
+    conf_threshold=0.4,
     iou_threshold=0.45,
   )
 
@@ -320,17 +337,23 @@ def main():
     print(f"True Positives: {metrics.total_matches}")
     print(f"False Positives: {metrics.total_false_positives}")
     print(f"False Negatives: {metrics.total_false_negatives}")
+    print(f"Avg Inference Time: {metrics.avg_inference_time * 1000:.2f} ms")
+    print(f"FPS: {metrics.fps:.2f}")
 
   avg_metrics = {
     "precision": np.mean([m.precision for m in results.values() if hasattr(m, "precision")]),
     "recall": np.mean([m.recall for m in results.values() if hasattr(m, "recall")]),
     "f1_score": np.mean([m.f1_score for m in results.values() if hasattr(m, "f1_score")]),
+    "avg_inference_time": np.mean([m.avg_inference_time for m in results.values() if hasattr(m, "avg_inference_time")]),
+    "fps": np.mean([m.fps for m in results.values() if hasattr(m, "fps")]),
   }
 
   print("\nOverall Average Metrics:")
   print(f"Average Precision: {avg_metrics['precision']:.4f}")
   print(f"Average Recall: {avg_metrics['recall']:.4f}")
   print(f"Average F1 Score: {avg_metrics['f1_score']:.4f}")
+  print(f"Average Inference Time: {avg_metrics['avg_inference_time'] * 1000:.2f} ms")
+  print(f"Average FPS: {avg_metrics['fps']:.2f}")
 
   end_time = time.perf_counter()
   total_seconds = end_time - start_time
