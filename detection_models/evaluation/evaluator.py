@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 
 import cv2
+import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
@@ -22,8 +23,26 @@ def process_video(
   progress_idx: int = 0,
   progress_dict: dict = None,
   conf_threshold: float = 0.05,
-) -> EvaluationMetrics:
-  """Process a single video and evaluate against ground truth"""
+  return_raw_data: bool = False,
+) -> tuple[EvaluationMetrics, tuple] | EvaluationMetrics:
+  """
+  Process a single video and evaluate against ground truth
+
+  Args:
+    video_path: Path to video file
+    gt_path: Path to ground truth file
+    model: Detector model
+    output_path: Optional path to save visualization
+    visualize: Whether to create visualization
+    progress_idx: Index for progress tracking
+    progress_dict: Dictionary for progress tracking
+    conf_threshold: Confidence threshold for filtering
+    return_raw_data: Whether to return raw detection data along with metrics
+
+  Returns:
+    If return_raw_data is False: EvaluationMetrics
+    If return_raw_data is True: Tuple of (EvaluationMetrics, (all_gt_boxes, all_pred_boxes))
+  """
   gt_df = pd.read_csv(gt_path)
   metrics = EvaluationMetrics()
 
@@ -105,15 +124,18 @@ def process_video(
   if hasattr(model, 'conf_threshold'):
     model.conf_threshold = original_conf
 
-  return metrics
+  if return_raw_data:
+    return metrics, (all_gt_boxes, all_pred_boxes)
+  else:
+    return metrics
 
 
-def process_video_parallel(video_path, gt_path, model_config, output_path, visualize, progress_idx, progress_dict):
+def process_video_parallel(video_path, gt_path, model_config, output_path, visualize, progress_idx, progress_dict, return_raw_data=False):
   """Wrapper function for parallel processing"""
   try:
     progress_dict[progress_idx] = 0
     model = ModelRegistry.create_from_config(model_config)
-    return process_video(video_path, gt_path, model, output_path, visualize, progress_idx, progress_dict)
+    return process_video(video_path, gt_path, model, output_path, visualize, progress_idx, progress_dict, return_raw_data=return_raw_data)
   except Exception as e:
     print(f"Error processing video {os.path.basename(video_path)}: {e}")
     return None
@@ -210,7 +232,7 @@ class ModelEvaluator:
     manager = mp.Manager()
     progress_dict = manager.dict()
 
-    process_args = [(args[0], args[1], args[2], args[3], args[4], i, progress_dict) for i, args in enumerate(process_args)]
+    process_args = [(args[0], args[1], args[2], args[3], args[4], i, progress_dict, True) for i, args in enumerate(process_args)]
 
     with tqdm(total=total_frames, desc="Overall progress", position=0, leave=False) as main_pbar:
       last_total = 0
@@ -224,8 +246,27 @@ class ModelEvaluator:
           last_total = current_total
           time.sleep(0.1)
 
-        results = async_result.get()
+        results_with_data = async_result.get()
 
         main_pbar.update(total_frames - last_total)
 
-    return {i + 1: metrics for i, metrics in enumerate(results) if metrics is not None}
+    results_dict = {}
+    all_videos_gt_boxes = []
+    all_videos_pred_boxes = []
+
+    for i, result in enumerate(results_with_data):
+      if result is not None:
+        metrics, (gt_boxes, pred_boxes) = result
+        results_dict[i + 1] = metrics
+        all_videos_gt_boxes.append(gt_boxes)
+        all_videos_pred_boxes.append(pred_boxes)
+
+    if self.output_dir and results_dict:
+      true_combined_metrics = EvaluationMetrics.create_combined_from_raw_data(all_videos_gt_boxes, all_videos_pred_boxes)
+
+      true_combined_metrics.save_pr_curve(
+        f"{self.output_dir}/combined_pr_curve.png",
+        mark_thresholds=[self.model_config.conf_threshold]
+      )
+
+    return results_dict

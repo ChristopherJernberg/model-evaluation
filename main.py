@@ -10,7 +10,7 @@ from detection_models.evaluation import ModelEvaluator
 def main():
   start_time = time.perf_counter()
 
-  model_name = "yolov8m-pose"  # or "yolov8m-pose" or another model
+  model_name = "yolov8m-pose"  # "yolov8m-pose", "rtdetrv2-r18vd", or another model
 
   # Define whether to visualize
   visualize = True
@@ -51,7 +51,7 @@ def main():
     print(f"FPS: {metrics.fps:.2f}")
 
     if output_dir:
-      metrics.save_pr_curve(f"{output_dir}/video_{video_id}_pr_curve.png")
+      metrics.save_pr_curve(f"{output_dir}/video_{video_id}_pr_curve.png", mark_thresholds=[model_config.conf_threshold])
 
   avg_metrics = {
     "mAP": np.mean([m.mAP for m in results.values()]),
@@ -73,10 +73,6 @@ def main():
   print(f"Average F1 Score: {avg_metrics['f1_score']:.4f}")
   print(f"Average Inference Time: {avg_metrics['avg_inference_time'] * 1000:.2f} ms")
   print(f"Average FPS: {avg_metrics['fps']:.2f}")
-
-  if output_dir and len(results) > 0:
-    first_video_id = next(iter(results.keys()))
-    results[first_video_id].save_pr_curve(f"{output_dir}/overall_pr_curve.png")
 
   end_time = time.perf_counter()
   total_seconds = end_time - start_time
