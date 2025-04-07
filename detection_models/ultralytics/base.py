@@ -45,12 +45,9 @@ class UltralyticsModel(ABC):
   def predict(
     self,
     frame: np.ndarray,
-    verbose: bool = VERBOSE,
-    conf: float = CONFIDENCE_THRESHOLD,
-    iou: float = IOU_THRESHOLD,
   ) -> list[tuple[float, float, float, float, float]]:
     """Common prediction implementation for all Ultralytics models"""
-    results = self.model(frame, verbose=verbose, conf=conf, iou=iou)
+    results = self.model(frame, verbose=VERBOSE, conf=self.conf_threshold, iou=self.iou_threshold)
     detections = []
 
     for result in results:
