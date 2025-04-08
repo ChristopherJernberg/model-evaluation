@@ -7,15 +7,15 @@ from detection_models.detection_interfaces import Detector
 from detection_models.registry import ModelRegistry
 
 
-@ModelRegistry.register_class(category="RTDetrV2")
+@ModelRegistry.register_class(categories=["RTDetrV2"])
 class RTDetrV2(Detector):
   """RTDETR V2 detector implementation using HuggingFace Transformers"""
 
   SUPPORTED_MODELS = {
-    "rtdetrv2-r18vd": "PekingU/rtdetr_v2_r18vd",
-    "rtdetrv2-r34vd": "PekingU/rtdetr_v2_r34vd",
-    "rtdetrv2-r50vd": "PekingU/rtdetr_v2_r50vd",
-    "rtdetrv2-r101vd": "PekingU/rtdetr_v2_r101vd",
+    "rtdetrv2-r18vd": {"path": "PekingU/rtdetr_v2_r18vd", "categories": ["small", "fast", "transformer"]},
+    "rtdetrv2-r34vd": {"path": "PekingU/rtdetr_v2_r34vd", "categories": ["medium", "balanced", "transformer"]},
+    "rtdetrv2-r50vd": {"path": "PekingU/rtdetr_v2_r50vd", "categories": ["large", "accurate", "transformer"]},
+    "rtdetrv2-r101vd": {"path": "PekingU/rtdetr_v2_r101vd", "categories": ["xlarge", "most-accurate", "transformer"]},
   }
 
   def __init__(self, model_name: str, device: str, conf: float, iou: float):
@@ -24,7 +24,7 @@ class RTDetrV2(Detector):
     self.iou_threshold = iou
     self.device = device
 
-    model_id = self.SUPPORTED_MODELS[model_name]
+    model_id = self.SUPPORTED_MODELS[model_name]["path"]
     self.processor = RTDetrImageProcessor.from_pretrained(model_id)
     self.model = RTDetrV2ForObjectDetection.from_pretrained(model_id).to(device)
     self.model.eval()

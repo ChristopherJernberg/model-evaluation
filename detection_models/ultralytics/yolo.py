@@ -7,63 +7,63 @@ from .base import UltralyticsModel
 from .constants import CONFIDENCE_THRESHOLD, VERBOSE
 
 
-@ModelRegistry.register_class(category="YOLO")
+@ModelRegistry.register_class(categories=["YOLO"])
 class YOLOModel(UltralyticsModel):
   """Base class for YOLO models"""
 
   SUPPORTED_MODELS = {
     # YOLOv3
-    "yolov3u": "yolov3u.pt",
-    "yolov3-tinyu": "yolov3-tinyu.pt",
-    "yolov3-sppu": "yolov3-sppu.pt",
+    "yolov3u": {"path": "yolov3u.pt", "categories": ["v3", "large"]},
+    "yolov3-tinyu": {"path": "yolov3-tinyu.pt", "categories": ["v3", "tiny", "fast"]},
+    "yolov3-sppu": {"path": "yolov3-sppu.pt", "categories": ["v3", "special"]},
     # YOLOv5
-    "yolov5nu": "yolov5nu.pt",
-    "yolov5su": "yolov5su.pt",
-    "yolov5mu": "yolov5mu.pt",
-    "yolov5lu": "yolov5lu.pt",
-    "yolov5xu": "yolov5xu.pt",
-    "yolov5n6u": "yolov5n6u.pt",
-    "yolov5s6u": "yolov5s6u.pt",
-    "yolov5m6u": "yolov5m6u.pt",
-    "yolov5l6u": "yolov5l6u.pt",
-    "yolov5x6u": "yolov5x6u.pt",
+    "yolov5nu": {"path": "yolov5nu.pt", "categories": ["v5", "nano", "fastest"]},
+    "yolov5su": {"path": "yolov5su.pt", "categories": ["v5", "small", "fast"]},
+    "yolov5mu": {"path": "yolov5mu.pt", "categories": ["v5", "medium", "balanced"]},
+    "yolov5lu": {"path": "yolov5lu.pt", "categories": ["v5", "large", "accurate"]},
+    "yolov5xu": {"path": "yolov5xu.pt", "categories": ["v5", "xlarge", "most-accurate"]},
+    "yolov5n6u": {"path": "yolov5n6u.pt", "categories": ["v5", "nano", "fastest"]},
+    "yolov5s6u": {"path": "yolov5s6u.pt", "categories": ["v5", "small", "fast"]},
+    "yolov5m6u": {"path": "yolov5m6u.pt", "categories": ["v5", "medium", "balanced"]},
+    "yolov5l6u": {"path": "yolov5l6u.pt", "categories": ["v5", "large", "accurate"]},
+    "yolov5x6u": {"path": "yolov5x6u.pt", "categories": ["v5", "xlarge", "most-accurate"]},
     # YOLOv6
-    "yolov6n": "yolov6n.pt",
-    "yolov6s": "yolov6s.pt",
-    "yolov6m": "yolov6m.pt",
-    "yolov6l": "yolov6l.pt",
-    "yolov6x": "yolov6x.pt",
+    "yolov6n": {"path": "yolov6n.pt", "categories": ["v6", "nano", "fastest"]},
+    "yolov6s": {"path": "yolov6s.pt", "categories": ["v6", "small", "fast"]},
+    "yolov6m": {"path": "yolov6m.pt", "categories": ["v6", "medium", "balanced"]},
+    "yolov6l": {"path": "yolov6l.pt", "categories": ["v6", "large", "accurate"]},
+    "yolov6x": {"path": "yolov6x.pt", "categories": ["v6", "xlarge", "most-accurate"]},
     # YOLOv8
-    "yolov8n": "yolov8n.pt",
-    "yolov8s": "yolov8s.pt",
-    "yolov8m": "yolov8m.pt",
-    "yolov8l": "yolov8l.pt",
-    "yolov8x": "yolov8x.pt",
+    "yolov8n": {"path": "yolov8n.pt", "categories": ["v8", "nano", "fastest"]},
+    "yolov8s": {"path": "yolov8s.pt", "categories": ["v8", "small", "fast"]},
+    "yolov8m": {"path": "yolov8m.pt", "categories": ["v8", "medium", "balanced"]},
+    "yolov8l": {"path": "yolov8l.pt", "categories": ["v8", "large", "accurate"]},
+    "yolov8x": {"path": "yolov8x.pt", "categories": ["v8", "xlarge", "most-accurate"]},
     # YOLOv9
-    "yolov9t": "yolov9t.pt",
-    "yolov9s": "yolov9s.pt",
-    "yolov9m": "yolov9m.pt",
-    "yolov9c": "yolov9c.pt",
-    "yolov9e": "yolov9e.pt",
+    "yolov9t": {"path": "yolov9t.pt", "categories": ["v9", "tiny", "fast"]},
+    "yolov9s": {"path": "yolov9s.pt", "categories": ["v9", "small", "fast"]},
+    "yolov9m": {"path": "yolov9m.pt", "categories": ["v9", "medium", "balanced"]},
+    "yolov9c": {"path": "yolov9c.pt", "categories": ["v9", "large", "accurate"]},
+    "yolov9e": {"path": "yolov9e.pt", "categories": ["v9", "xlarge", "most-accurate"]},
     # YOLO10
-    "yolov10n": "yolov10n.pt",
-    "yolov10s": "yolov10s.pt",
-    "yolov10m": "yolov10m.pt",
-    "yolov10b": "yolov10b.pt",
-    "yolov10l": "yolov10l.pt",
-    "yolov10x": "yolov10x.pt",
+    "yolov10n": {"path": "yolov10n.pt", "categories": ["v10", "nano", "fastest"]},
+    "yolov10s": {"path": "yolov10s.pt", "categories": ["v10", "small", "fast"]},
+    "yolov10m": {"path": "yolov10m.pt", "categories": ["v10", "medium", "balanced"]},
+    "yolov10b": {"path": "yolov10b.pt", "categories": ["v10", "large", "accurate"]},
+    "yolov10l": {"path": "yolov10l.pt", "categories": ["v10", "xlarge", "most-accurate"]},
+    "yolov10x": {"path": "yolov10x.pt", "categories": ["v10", "xlarge", "most-accurate"]},
     # YOLO11
-    "yolo11n": "yolo11n.pt",
-    "yolo11s": "yolo11s.pt",
-    "yolo11m": "yolo11m.pt",
-    "yolo11l": "yolo11l.pt",
-    "yolo11x": "yolo11x.pt",
+    "yolo11n": {"path": "yolo11n.pt", "categories": ["v11", "nano", "fastest"]},
+    "yolo11s": {"path": "yolo11s.pt", "categories": ["v11", "small", "fast"]},
+    "yolo11m": {"path": "yolo11m.pt", "categories": ["v11", "medium", "balanced"]},
+    "yolo11l": {"path": "yolo11l.pt", "categories": ["v11", "large", "accurate"]},
+    "yolo11x": {"path": "yolo11x.pt", "categories": ["v11", "xlarge", "most-accurate"]},
     # YOLO12
-    "yolo12n": "yolo12n.pt",
-    "yolo12s": "yolo12s.pt",
-    "yolo12m": "yolo12m.pt",
-    "yolo12l": "yolo12l.pt",
-    "yolo12x": "yolo12x.pt",
+    "yolo12n": {"path": "yolo12n.pt", "categories": ["v12", "nano", "fastest"]},
+    "yolo12s": {"path": "yolo12s.pt", "categories": ["v12", "small", "fast"]},
+    "yolo12m": {"path": "yolo12m.pt", "categories": ["v12", "medium", "balanced"]},
+    "yolo12l": {"path": "yolo12l.pt", "categories": ["v12", "large", "accurate"]},
+    "yolo12x": {"path": "yolo12x.pt", "categories": ["v12", "xlarge", "most-accurate"]},
     # YOLO-NAS
     # "yolo_nas_s": "yolo_nas_s.pt",
     # "yolo_nas_m": "yolo_nas_m.pt",
@@ -76,24 +76,24 @@ class YOLOModel(UltralyticsModel):
     return YOLO(model_path)
 
 
-@ModelRegistry.register_class(is_pose_capable=True, category="YOLO-Pose")
+@ModelRegistry.register_class(is_pose_capable=True, categories=["YOLO-Pose"])
 class YOLOPoseModel(YOLOModel):
   """YOLO model with pose estimation capabilities"""
 
   SUPPORTED_MODELS = {
     # YOLOv8
-    "yolov8n-pose": "yolov8n-pose.pt",
-    "yolov8s-pose": "yolov8s-pose.pt",
-    "yolov8m-pose": "yolov8m-pose.pt",
-    "yolov8l-pose": "yolov8l-pose.pt",
-    "yolov8x-pose": "yolov8x-pose.pt",
-    "yolov8x-pose-p6": "yolov8x-pose-p6.pt",
+    "yolov8n-pose": {"path": "yolov8n-pose.pt", "categories": ["v8", "pose"]},
+    "yolov8s-pose": {"path": "yolov8s-pose.pt", "categories": ["v8", "pose"]},
+    "yolov8m-pose": {"path": "yolov8m-pose.pt", "categories": ["v8", "pose"]},
+    "yolov8l-pose": {"path": "yolov8l-pose.pt", "categories": ["v8", "pose"]},
+    "yolov8x-pose": {"path": "yolov8x-pose.pt", "categories": ["v8", "pose"]},
+    "yolov8x-pose-p6": {"path": "yolov8x-pose-p6.pt", "categories": ["v8", "pose"]},
     # YOLO11
-    "yolo11n-pose": "yolo11n-pose.pt",
-    "yolo11s-pose": "yolo11s-pose.pt",
-    "yolo11m-pose": "yolo11m-pose.pt",
-    "yolo11l-pose": "yolo11l-pose.pt",
-    "yolo11x-pose": "yolo11x-pose.pt",
+    "yolo11n-pose": {"path": "yolo11n-pose.pt", "categories": ["v11", "pose"]},
+    "yolo11s-pose": {"path": "yolo11s-pose.pt", "categories": ["v11", "pose"]},
+    "yolo11m-pose": {"path": "yolo11m-pose.pt", "categories": ["v11", "pose"]},
+    "yolo11l-pose": {"path": "yolo11l-pose.pt", "categories": ["v11", "pose"]},
+    "yolo11x-pose": {"path": "yolo11x-pose.pt", "categories": ["v11", "pose"]},
   }
 
   KEYPOINT_CONNECTIONS = [
@@ -139,23 +139,23 @@ class YOLOPoseModel(YOLOModel):
     return poses
 
 
-@ModelRegistry.register_class(category="YOLO-Seg")
+@ModelRegistry.register_class(categories=["YOLO-Seg"])
 class YOLOSegModel(YOLOModel):
   """YOLO model with segmentation capabilities"""
 
   SUPPORTED_MODELS = {
     # YOLOv8 segmentation models
-    "yolov8n-seg": "yolov8n-seg.pt",
-    "yolov8s-seg": "yolov8s-seg.pt",
-    "yolov8m-seg": "yolov8m-seg.pt",
-    "yolov8l-seg": "yolov8l-seg.pt",
-    "yolov8x-seg": "yolov8x-seg.pt",
+    "yolov8n-seg": {"path": "yolov8n-seg.pt", "categories": ["v8", "seg"]},
+    "yolov8s-seg": {"path": "yolov8s-seg.pt", "categories": ["v8", "seg"]},
+    "yolov8m-seg": {"path": "yolov8m-seg.pt", "categories": ["v8", "seg"]},
+    "yolov8l-seg": {"path": "yolov8l-seg.pt", "categories": ["v8", "seg"]},
+    "yolov8x-seg": {"path": "yolov8x-seg.pt", "categories": ["v8", "seg"]},
     # Newer YOLO segmentation models
-    "yolo11n-seg": "yolo11n-seg.pt",
-    "yolo11s-seg": "yolo11s-seg.pt",
-    "yolo11m-seg": "yolo11m-seg.pt",
-    "yolo11l-seg": "yolo11l-seg.pt",
-    "yolo11x-seg": "yolo11x-seg.pt",
+    "yolo11n-seg": {"path": "yolo11n-seg.pt", "categories": ["v11", "seg"]},
+    "yolo11s-seg": {"path": "yolo11s-seg.pt", "categories": ["v11", "seg"]},
+    "yolo11m-seg": {"path": "yolo11m-seg.pt", "categories": ["v11", "seg"]},
+    "yolo11l-seg": {"path": "yolo11l-seg.pt", "categories": ["v11", "seg"]},
+    "yolo11x-seg": {"path": "yolo11x-seg.pt", "categories": ["v11", "seg"]},
   }
 
   def predict_segmentation(

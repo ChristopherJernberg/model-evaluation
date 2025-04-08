@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypedDict
 
 import numpy as np
 
@@ -14,10 +14,15 @@ from .constants import (
 )
 
 
+class ModelInfo(TypedDict, total=False):
+  path: str
+  categories: list[str]
+
+
 class UltralyticsModel(ABC):
   """Base class for all Ultralytics models"""
 
-  SUPPORTED_MODELS: ClassVar[dict[str, str]] = {}
+  SUPPORTED_MODELS: ClassVar[dict[str, ModelInfo]] = {}
 
   def __init__(self, model_name: str, device: str = DEFAULT_DEVICE, conf: float = CONFIDENCE_THRESHOLD, iou: float = IOU_THRESHOLD):
     if model_name not in self.SUPPORTED_MODELS:
@@ -26,11 +31,8 @@ class UltralyticsModel(ABC):
     if device not in VALID_DEVICES:
       raise ValueError(f"Device must be one of: {', '.join(VALID_DEVICES)}")
 
-    model_path = Path(MODEL_DIR) / self.SUPPORTED_MODELS[model_name]
-
-    # Skip file check during development
-    # if not model_path.exists():
-    #     raise FileNotFoundError(f"Model file not found: {model_path}")
+    model_info = self.SUPPORTED_MODELS[model_name]
+    model_path = Path(MODEL_DIR) / model_info["path"]
 
     self.model = self._load_model(str(model_path))
     self.model.to(device)

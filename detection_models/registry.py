@@ -4,28 +4,41 @@ from detection_models.detection_interfaces import Detector, ModelConfig
 
 
 class ModelRegistry:
-  # Maps model_name -> (factory_function, is_pose_capable, category)
+  # Maps model_name -> (factory_function, is_pose_capable, categories)
   _model_map = {}
 
   @classmethod
-  def register_model(cls, model_name: str, factory_func: Callable, is_pose_capable: bool = False, category: str = None):
+  def register_model(cls, model_name: str, factory_func: Callable, is_pose_capable: bool = False, categories: list[str] = None):
     """Register a specific model with its factory function"""
-    cls._model_map[model_name] = (factory_func, is_pose_capable, category)
+    categories_list = categories or []
+    cls._model_map[model_name] = (factory_func, is_pose_capable, categories_list)
 
   @classmethod
-  def register_models_from_class(cls, model_class, is_pose_capable: bool = False, category: str = None):
+  def register_models_from_class(cls, model_class, is_pose_capable: bool = False, categories: list[str] = None):
     """Register all models from a model class's SUPPORTED_MODELS dict"""
-    category = category or model_class.__name__
-    for model_name in model_class.SUPPORTED_MODELS:
-      # Important: Use default args to capture current values
-      cls.register_model(model_name, lambda name, device, conf, iou, cls=model_class: cls(name, device=device, conf=conf, iou=iou), is_pose_capable, category)
+    # Always include the class name as a category if no categories provided
+    class_categories = categories or []
+    if not class_categories and hasattr(model_class, "__name__"):
+      class_categories = [model_class.__name__]
+
+    for model_name, model_info in model_class.SUPPORTED_MODELS.items():
+      model_categories = class_categories.copy()
+      if "categories" in model_info and model_info["categories"]:
+        model_categories.extend(model_info["categories"])
+
+      cls.register_model(
+        model_name,
+        lambda name, device, conf, iou, cls=model_class: cls(name, device=device, conf=conf, iou=iou),
+        is_pose_capable,
+        model_categories,
+      )
 
   @classmethod
-  def register_class(cls, is_pose_capable: bool = False, category: str = None):
+  def register_class(cls, is_pose_capable: bool = False, categories: list[str] = None):
     """Decorator to register a model class"""
 
     def decorator(model_class):
-      cls.register_models_from_class(model_class, is_pose_capable, category)
+      cls.register_models_from_class(model_class, is_pose_capable, categories)
       return model_class
 
     return decorator
@@ -54,7 +67,7 @@ class ModelRegistry:
   @classmethod
   def is_pose_model(cls, model_name: str) -> bool:
     """Check if a model supports pose detection"""
-    return cls._model_map.get(model_name, (None, False))[1]
+    return cls._model_map.get(model_name, (None, False, []))[1]
 
   @classmethod
   def list_supported_models(cls) -> list[str]:
@@ -66,4 +79,19 @@ class ModelRegistry:
     """List all models in a category"""
     if category is None:
       return cls.list_supported_models()
-    return sorted([name for name, (_, _, cat) in cls._model_map.items() if cat == category])
+    return sorted([name for name, (_, _, categories) in cls._model_map.items() if category in categories])
+
+  @classmethod
+  def get_model_categories(cls, model_name: str) -> list[str]:
+    """Get all categories a model belongs to"""
+    if model_name not in cls._model_map:
+      return []
+    return cls._model_map[model_name][2]
+
+  @classmethod
+  def list_categories(cls) -> list[str]:
+    """List all available categories"""
+    categories = set()
+    for _, _, model_categories in cls._model_map.values():
+      categories.update(model_categories)
+    return sorted(categories)

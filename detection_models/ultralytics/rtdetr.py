@@ -4,13 +4,13 @@ from ..registry import ModelRegistry
 from .base import UltralyticsModel
 
 
-@ModelRegistry.register_class(category="RTDETR")
+@ModelRegistry.register_class(categories=["RTDETR"])
 class RTDETRModel(UltralyticsModel):
   """Base class for RT-DETR models"""
 
   SUPPORTED_MODELS = {
-    "rtdetr-l": "rtdetr-l.pt",
-    "rtdetr-x": "rtdetr-x.pt",
+    "rtdetr-l": {"path": "rtdetr-l.pt", "categories": ["real-time"]},
+    "rtdetr-x": {"path": "rtdetr-x.pt"},
   }
 
   def _load_model(self, model_path: str) -> Any:

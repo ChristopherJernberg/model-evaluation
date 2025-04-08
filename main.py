@@ -11,7 +11,7 @@ from detection_models.evaluation.metrics import EvaluationMetrics
 def main():
   start_time = time.perf_counter()
 
-  model_name = "yolov8m-pose"  # "yolov8m-pose", "rtdetrv2-r18vd", or another model
+  model_name = "rtdetrv2-r18vd"  # "yolov8m-pose", "rtdetrv2-r18vd", or another model
 
   # Define whether to visualize
   visualize = True
