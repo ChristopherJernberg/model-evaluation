@@ -48,9 +48,7 @@ class ModelRegistry:
     """Create a model instance based on the model name"""
     # Lazy load model types if registry is empty
     if not cls._model_map:
-      import detection_models.detr
-      import detection_models.foundation_models
-      import detection_models.ultralytics  # noqa: F401
+      cls._discover_models()
 
     if model_name not in cls._model_map:
       supported_models = sorted(cls._model_map.keys())
@@ -58,6 +56,25 @@ class ModelRegistry:
 
     factory, _, _ = cls._model_map[model_name]
     return factory(model_name, device, conf_threshold, iou_threshold)
+
+  @classmethod
+  def _discover_models(cls):
+    """Discover and load all model modules"""
+    import importlib
+    import pkgutil
+    import detection_models
+
+    for _, name, is_pkg in pkgutil.iter_modules(detection_models.__path__, f"{detection_models.__name__}."):
+      if is_pkg:
+        try:
+          importlib.import_module(name)
+          for _, subname, _ in pkgutil.iter_modules([name.replace(".", "/")]):
+            try:
+              importlib.import_module(f"{name}.{subname}")
+            except ImportError:
+              pass
+        except ImportError:
+          pass
 
   @classmethod
   def create_from_config(cls, config: ModelConfig) -> Detector:

@@ -20,7 +20,7 @@ def main():
   model_config = ModelConfig(
     name=model_name,
     device="mps",  # "mps", "cuda", or "cpu"
-    conf_threshold=0.5,
+    conf_threshold=0.6,
     iou_threshold=0.45,
   )
 
