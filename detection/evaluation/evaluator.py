@@ -7,10 +7,10 @@ import cv2
 import pandas as pd
 from tqdm.auto import tqdm
 
-from detection_models.detection_interfaces import Detector, ModelConfig
-from detection_models.evaluation.metrics import EvaluationMetrics, evaluate_detections, evaluate_with_multiple_iou_thresholds
-from detection_models.evaluation.visualization import DetectionVisualizer
-from detection_models.registry import ModelRegistry
+from detection.core.interfaces import Detector, ModelConfig
+from detection.core.registry import ModelRegistry
+from detection.evaluation.metrics import EvaluationMetrics, evaluate_detections, evaluate_with_multiple_iou_thresholds
+from detection.evaluation.visualization import DetectionVisualizer
 
 
 def process_video(

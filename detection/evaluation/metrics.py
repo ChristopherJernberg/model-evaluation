@@ -3,7 +3,7 @@ from typing import TypeAlias
 
 import numpy as np
 
-from detection_models.detection_interfaces import BoundingBox, Detection
+from detection.core.interfaces import BoundingBox, Detection
 
 PRCurveData: TypeAlias = dict[str, np.ndarray]
 IoUThresholds: TypeAlias = list[float] | np.ndarray

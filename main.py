@@ -3,15 +3,15 @@ from pathlib import Path
 
 import numpy as np
 
-from detection_models.detection_interfaces import ModelConfig
-from detection_models.evaluation import ModelEvaluator
-from detection_models.evaluation.metrics import EvaluationMetrics
+from detection.core.interfaces import ModelConfig
+from detection.evaluation import ModelEvaluator
+from detection.evaluation.metrics import EvaluationMetrics
 
 
 def main():
   start_time = time.perf_counter()
 
-  model_name = "rtdetrv2-r18vd"  # "yolov8m-pose", "rtdetrv2-r18vd", or another model
+  model_name = "yolov8m-pose"  # "yolov8m-pose", "rtdetrv2-r18vd", or another model
 
   # Define whether to visualize
   visualize = True
@@ -20,7 +20,7 @@ def main():
   model_config = ModelConfig(
     name=model_name,
     device="mps",  # "mps", "cuda", or "cpu"
-    conf_threshold=0.6,
+    conf_threshold=0.5,
     iou_threshold=0.45,
   )
 

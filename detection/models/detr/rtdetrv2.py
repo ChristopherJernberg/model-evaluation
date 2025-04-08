@@ -3,12 +3,11 @@ import numpy as np
 import torch
 from transformers import RTDetrImageProcessor, RTDetrV2ForObjectDetection
 
-from detection_models.detection_interfaces import Detector
-from detection_models.registry import ModelRegistry
+from detection.core.registry import ModelRegistry
 
 
 @ModelRegistry.register_class(categories=["RTDetrV2"])
-class RTDetrV2(Detector):
+class RTDetrV2:
   """RTDETR V2 detector implementation using HuggingFace Transformers"""
 
   SUPPORTED_MODELS = {

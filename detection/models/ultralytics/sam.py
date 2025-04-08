@@ -2,7 +2,7 @@ from typing import Any
 
 import numpy as np
 
-from detection_models.registry import ModelRegistry
+from detection.core.registry import ModelRegistry
 
 from .base import UltralyticsModel
 from .constants import CONFIDENCE_THRESHOLD, VERBOSE

@@ -1,6 +1,6 @@
 from typing import Callable
 
-from detection_models.detection_interfaces import Detector, ModelConfig
+from detection.core.interfaces import Detector, ModelConfig
 
 
 class ModelRegistry:
@@ -64,10 +64,10 @@ class ModelRegistry:
     import os
     import pkgutil
 
-    import detection_models
+    import detection
 
-    models_path = os.path.join(detection_models.__path__[0], 'models')
-    for _, name, is_pkg in pkgutil.iter_modules([models_path], f"{detection_models.__name__}.models."):
+    models_path = os.path.join(detection.__path__[0], 'models')
+    for _, name, is_pkg in pkgutil.iter_modules([models_path], f"{detection.__name__}.models."):
       try:
         importlib.import_module(name)
 

@@ -3,12 +3,12 @@ import torch
 from PIL import Image
 from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor  # , CLIPModel, CLIPProcessor
 
-from detection_models.detection_interfaces import Detection, Detector
-from detection_models.registry import ModelRegistry
+from detection.core.interfaces import Detection
+from detection.core.registry import ModelRegistry
 
 
 @ModelRegistry.register_class(categories=["GroundingDINO"])
-class GroundingDINODetector(Detector):
+class GroundingDINODetector:
   SUPPORTED_MODELS = {
     "grounding-dino-tiny": {"path": "IDEA-Research/grounding-dino-tiny", "categories": ["tiny", "fast", "zero-shot"]},
     "grounding-dino-base": {"path": "IDEA-Research/grounding-dino-base", "categories": ["base", "accurate", "zero-shot"]},
