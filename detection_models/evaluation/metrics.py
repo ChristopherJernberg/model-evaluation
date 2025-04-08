@@ -62,11 +62,13 @@ class EvaluationMetrics:
 
       plt.figure(figsize=(10, 8))
 
-      plt.plot(self.pr_curve_data["recalls"], self.pr_curve_data["precisions"], 'b-', linewidth=2, label='PR curve')
-
       recalls = self.pr_curve_data["recalls"]
       precisions = self.pr_curve_data["precisions"]
       thresholds = self.pr_curve_data["thresholds"]
+
+      pr_auc = np.trapz(precisions, recalls)  # noqa: NPY201
+
+      plt.plot(recalls, precisions, 'b-', linewidth=2, label='PR curve')
 
       if len(thresholds) > 1:
         points = plt.scatter(recalls[1:], precisions[1:], c=thresholds[1:], cmap='viridis', s=30, alpha=0.7)
@@ -92,12 +94,12 @@ class EvaluationMetrics:
 
       plt.xlabel('Recall')
       plt.ylabel('Precision')
-      plt.title(f'Precision-Recall Curve (AP@0.5={self.ap50:.4f})')
+      plt.title(f'Precision-Recall Curve (AUC={pr_auc:.4f})')
       plt.xlim([0, 1])
       plt.ylim([0, 1])
       plt.grid(True)
 
-      info_text = f"AP@0.5 = {self.ap50:.4f}\nAP@0.75 = {self.ap75:.4f}\nmAP = {self.mAP:.4f}\n"
+      info_text = f"PR AUC = {pr_auc:.4f}\nAP@0.5 = {self.ap50:.4f}\nAP@0.75 = {self.ap75:.4f}\nmAP = {self.mAP:.4f}"
       plt.text(0.05, 0.05, info_text, fontsize=10, bbox=dict(facecolor='white', alpha=0.8))
 
       plt.savefig(output_path, dpi=150, bbox_inches='tight')
