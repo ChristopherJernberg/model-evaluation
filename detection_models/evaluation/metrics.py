@@ -134,6 +134,81 @@ class EvaluationMetrics:
 
     return combined_metrics
 
+  @classmethod
+  def create_equally_weighted_combined(cls, metrics_list: list["EvaluationMetrics"]) -> "EvaluationMetrics":
+    """
+    Create a combined PR curve where each video contributes equally to the final curve,
+    while preserving the relationship with confidence thresholds.
+
+    Args:
+        metrics_list: List of EvaluationMetrics objects from individual videos
+
+    Returns:
+        A new EvaluationMetrics object with an equally-weighted combined PR curve
+    """
+    if not metrics_list:
+      return cls()
+
+    combined = cls()
+
+    all_thresholds = set()
+    for metrics in metrics_list:
+      if metrics.pr_curve_data and "thresholds" in metrics.pr_curve_data:
+        all_thresholds.update(metrics.pr_curve_data["thresholds"])
+
+    sorted_thresholds = sorted(all_thresholds, reverse=True)
+
+    if not sorted_thresholds:
+      return combined
+
+    avg_precisions = []
+    avg_recalls = []
+    final_thresholds = []
+
+    for threshold in sorted_thresholds:
+      if threshold > 0.99 or threshold < 0.01:
+        continue
+
+      precisions_at_threshold = []
+      recalls_at_threshold = []
+
+      for metrics in metrics_list:
+        if not metrics.pr_curve_data or "thresholds" not in metrics.pr_curve_data:
+          continue
+
+        thresholds = metrics.pr_curve_data["thresholds"]
+        idx = np.abs(thresholds - threshold).argmin()
+
+        if abs(thresholds[idx] - threshold) < 0.02:
+          precisions_at_threshold.append(metrics.pr_curve_data["precisions"][idx])
+          recalls_at_threshold.append(metrics.pr_curve_data["recalls"][idx])
+
+      if len(precisions_at_threshold) >= len(metrics_list) / 2:
+        avg_precisions.append(np.mean(precisions_at_threshold))
+        avg_recalls.append(np.mean(recalls_at_threshold))
+        final_thresholds.append(threshold)
+
+    if not final_thresholds:
+      return combined
+
+    avg_precisions = np.array(avg_precisions)
+    avg_recalls = np.array(avg_recalls)
+    final_thresholds = np.array(final_thresholds)
+
+    sort_idx = np.argsort(avg_recalls)
+    avg_precisions = avg_precisions[sort_idx]
+    avg_recalls = avg_recalls[sort_idx]
+    final_thresholds = final_thresholds[sort_idx]
+
+    combined.ap50 = calculate_ap(avg_precisions, avg_recalls)
+
+    combined.pr_curve_data = {"recalls": avg_recalls, "precisions": avg_precisions, "thresholds": final_thresholds}
+
+    combined.mAP = combined.ap50
+    combined.ap75 = combined.ap50
+
+    return combined
+
 
 def calculate_iou(box1: BoundingBox, box2: BoundingBox) -> float:
   """Calculate IoU between two boxes [x1,y1,w,h]"""

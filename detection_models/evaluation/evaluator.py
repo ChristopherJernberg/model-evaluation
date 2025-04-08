@@ -4,7 +4,6 @@ import time
 from pathlib import Path
 
 import cv2
-import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
@@ -183,7 +182,7 @@ class ModelEvaluator:
     except Exception as e:
       print(f"Error pre-loading model {model_config.name}: {e}")
 
-  def evaluate_dataset(self, data_dir: Path, num_workers: int = None) -> dict[int, EvaluationMetrics]:
+  def evaluate_dataset(self, data_dir: Path, num_workers: int = None) -> tuple[dict[int, EvaluationMetrics], EvaluationMetrics | None]:
     """Evaluate model performance on all videos in dataset using parallel processing"""
     video_dir = data_dir / "videos"
     gt_dir = data_dir / "gt"
@@ -214,7 +213,7 @@ class ModelEvaluator:
 
     if not process_args:
       print("No valid videos found in dataset")
-      return {}
+      return {}, None
 
     total_frames = 0
     frame_counts = {}
@@ -253,6 +252,7 @@ class ModelEvaluator:
     results_dict = {}
     all_videos_gt_boxes = []
     all_videos_pred_boxes = []
+    combined_metrics = None
 
     for i, result in enumerate(results_with_data):
       if result is not None:
@@ -262,11 +262,6 @@ class ModelEvaluator:
         all_videos_pred_boxes.append(pred_boxes)
 
     if self.output_dir and results_dict:
-      true_combined_metrics = EvaluationMetrics.create_combined_from_raw_data(all_videos_gt_boxes, all_videos_pred_boxes)
+      combined_metrics = EvaluationMetrics.create_combined_from_raw_data(all_videos_gt_boxes, all_videos_pred_boxes)
 
-      true_combined_metrics.save_pr_curve(
-        f"{self.output_dir}/combined_pr_curve.png",
-        mark_thresholds=[self.model_config.conf_threshold]
-      )
-
-    return results_dict
+    return results_dict, combined_metrics
