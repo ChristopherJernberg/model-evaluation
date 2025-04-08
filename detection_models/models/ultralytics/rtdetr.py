@@ -1,6 +1,7 @@
 from typing import Any
 
-from ..registry import ModelRegistry
+from detection_models.registry import ModelRegistry
+
 from .base import UltralyticsModel
 
 

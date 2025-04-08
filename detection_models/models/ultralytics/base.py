@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import Any, ClassVar, TypedDict
 
 import numpy as np
@@ -32,7 +31,8 @@ class UltralyticsModel(ABC):
       raise ValueError(f"Device must be one of: {', '.join(VALID_DEVICES)}")
 
     model_info = self.SUPPORTED_MODELS[model_name]
-    model_path = Path(MODEL_DIR) / model_info["path"]
+    model_path = MODEL_DIR / model_info["path"]
+    MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
     self.model = self._load_model(str(model_path))
     self.model.to(device)

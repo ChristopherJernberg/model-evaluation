@@ -25,7 +25,6 @@
 
 checkpoints/
 weights/
-models/
 pretrained/
 
 # Byte-compiled / optimized / DLL files
@@ -49,6 +48,4 @@ dmypy.json
 
 data/
 output/
-models/*.pth
-models/
 *.mp4

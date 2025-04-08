@@ -61,20 +61,25 @@ class ModelRegistry:
   def _discover_models(cls):
     """Discover and load all model modules"""
     import importlib
+    import os
     import pkgutil
+
     import detection_models
 
-    for _, name, is_pkg in pkgutil.iter_modules(detection_models.__path__, f"{detection_models.__name__}."):
-      if is_pkg:
-        try:
-          importlib.import_module(name)
-          for _, subname, _ in pkgutil.iter_modules([name.replace(".", "/")]):
+    models_path = os.path.join(detection_models.__path__[0], 'models')
+    for _, name, is_pkg in pkgutil.iter_modules([models_path], f"{detection_models.__name__}.models."):
+      try:
+        importlib.import_module(name)
+
+        if is_pkg:
+          package_path = os.path.join(models_path, name.split('.')[-1])
+          for _, subname, _ in pkgutil.iter_modules([package_path]):
             try:
               importlib.import_module(f"{name}.{subname}")
             except ImportError:
               pass
-        except ImportError:
-          pass
+      except ImportError:
+        pass
 
   @classmethod
   def create_from_config(cls, config: ModelConfig) -> Detector:

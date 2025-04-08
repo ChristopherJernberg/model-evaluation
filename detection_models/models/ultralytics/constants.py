@@ -1,7 +1,9 @@
 """Constants used across the ultralytics model implementations"""
 
-# File system
-MODEL_DIR = "models"  # Base directory for model weights
+from pathlib import Path
+
+PACKAGE_DIR = Path(__file__).parent.parent
+MODEL_DIR = PACKAGE_DIR / "weights" / "ultralytics"
 
 # Model parameters
 CONFIDENCE_THRESHOLD = 0.5  # Minimum confidence score for detections

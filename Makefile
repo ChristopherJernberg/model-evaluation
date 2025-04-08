@@ -14,7 +14,7 @@ clean:
 	rm -rf output/*
 
 deep-clean: clean
-	rm -rf models/*
+	find . -path "*/weights/*" -delete
 	rm -rf __pycache__
 	rm -rf .ruff_cache
 	rm -rf .mypy_cache
