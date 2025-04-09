@@ -11,10 +11,10 @@ class RTDetrV2:
   """RTDETR V2 detector implementation using HuggingFace Transformers"""
 
   SUPPORTED_MODELS = {
-    "rtdetrv2-r18vd": {"path": "PekingU/rtdetr_v2_r18vd", "categories": ["small", "fast", "transformer"]},
-    "rtdetrv2-r34vd": {"path": "PekingU/rtdetr_v2_r34vd", "categories": ["medium", "balanced", "transformer"]},
-    "rtdetrv2-r50vd": {"path": "PekingU/rtdetr_v2_r50vd", "categories": ["large", "accurate", "transformer"]},
-    "rtdetrv2-r101vd": {"path": "PekingU/rtdetr_v2_r101vd", "categories": ["xlarge", "most-accurate", "transformer"]},
+    "rtdetrv2-r18vd": {"path": "PekingU/rtdetr_v2_r18vd", "categories": ["small", "real-time", "rtdetr", "detr", "transformer"]},
+    "rtdetrv2-r34vd": {"path": "PekingU/rtdetr_v2_r34vd", "categories": ["medium", "real-time", "rtdetr", "detr", "transformer"]},
+    "rtdetrv2-r50vd": {"path": "PekingU/rtdetr_v2_r50vd", "categories": ["large", "rtdetr", "detr", "transformer"]},
+    "rtdetrv2-r101vd": {"path": "PekingU/rtdetr_v2_r101vd", "categories": ["xlarge", "rtdetr", "detr", "transformer"]},
   }
 
   def __init__(self, model_name: str, device: str, conf: float, iou: float):

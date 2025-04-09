@@ -14,23 +14,23 @@ class SAMModel(UltralyticsModel):
 
   SUPPORTED_MODELS = {
     # SAM
-    "sam_b": {"path": "sam_b.pt", "categories": ["SAM", "base", "medium-accuracy"]},
-    "sam_l": {"path": "sam_l.pt", "categories": ["SAM", "large", "high-accuracy"]},
+    "sam_b": {"path": "sam_b.pt", "categories": ["base"]},
+    "sam_l": {"path": "sam_l.pt", "categories": ["large"]},
     # SAM2
-    "sam2_t": {"path": "sam2_t.pt", "categories": ["SAM2", "tiny", "fast"]},
-    "sam2_s": {"path": "sam2_s.pt", "categories": ["SAM2", "small", "balanced"]},
-    "sam2_b": {"path": "sam2_b.pt", "categories": ["SAM2", "base", "accurate"]},
-    "sam2_l": {"path": "sam2_l.pt", "categories": ["SAM2", "large", "most-accurate"]},
+    "sam2_t": {"path": "sam2_t.pt", "categories": ["SAM2", "tiny"]},
+    "sam2_s": {"path": "sam2_s.pt", "categories": ["SAM2", "small"]},
+    "sam2_b": {"path": "sam2_b.pt", "categories": ["SAM2", "base"]},
+    "sam2_l": {"path": "sam2_l.pt", "categories": ["SAM2", "large"]},
     # SAM2.1
-    "sam2.1_t": {"path": "sam2.1_t.pt", "categories": ["SAM2.1", "tiny", "fast"]},
-    "sam2.1_s": {"path": "sam2.1_s.pt", "categories": ["SAM2.1", "small", "balanced"]},
-    "sam2.1_b": {"path": "sam2.1_b.pt", "categories": ["SAM2.1", "base", "accurate"]},
-    "sam2.1_l": {"path": "sam2.1_l.pt", "categories": ["SAM2.1", "large", "most-accurate"]},
+    "sam2.1_t": {"path": "sam2.1_t.pt", "categories": ["SAM2.1", "tiny"]},
+    "sam2.1_s": {"path": "sam2.1_s.pt", "categories": ["SAM2.1", "small"]},
+    "sam2.1_b": {"path": "sam2.1_b.pt", "categories": ["SAM2.1", "base"]},
+    "sam2.1_l": {"path": "sam2.1_l.pt", "categories": ["SAM2.1", "large"]},
     # MobileSAM
-    "mobile_sam": {"path": "mobile_sam.pt", "categories": ["MobileSAM", "mobile", "fastest"]},
+    "mobile_sam": {"path": "mobile_sam.pt", "categories": ["MobileSAM", "mobile"]},
     # FastSAM
-    "FastSAM-s": {"path": "FastSAM-s.pt", "categories": ["FastSAM", "small", "fast"]},
-    "FastSAM-x": {"path": "FastSAM-x.pt", "categories": ["FastSAM", "large", "accurate"]},
+    "FastSAM-s": {"path": "FastSAM-s.pt", "categories": ["FastSAM", "small"]},
+    "FastSAM-x": {"path": "FastSAM-x.pt", "categories": ["FastSAM", "large"]},
   }
 
   def _load_model(self, model_path: str) -> Any:

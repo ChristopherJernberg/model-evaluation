@@ -10,8 +10,8 @@ class RTDETRModel(UltralyticsModel):
   """Base class for RT-DETR models"""
 
   SUPPORTED_MODELS = {
-    "rtdetr-l": {"path": "rtdetr-l.pt", "categories": ["real-time"]},
-    "rtdetr-x": {"path": "rtdetr-x.pt"},
+    "rtdetr-l": {"path": "rtdetr-l.pt", "categories": ["large", "rtdetr", "detr", "transformer"]},
+    "rtdetr-x": {"path": "rtdetr-x.pt", "categories": ["xlarge", "rtdetr", "detr", "transformer"]},
   }
 
   def _load_model(self, model_path: str) -> Any:

@@ -10,8 +10,8 @@ from detection.core.registry import ModelRegistry
 @ModelRegistry.register_class(categories=["GroundingDINO"])
 class GroundingDINODetector:
   SUPPORTED_MODELS = {
-    "grounding-dino-tiny": {"path": "IDEA-Research/grounding-dino-tiny", "categories": ["tiny", "fast", "zero-shot"]},
-    "grounding-dino-base": {"path": "IDEA-Research/grounding-dino-base", "categories": ["base", "accurate", "zero-shot"]},
+    "grounding-dino-tiny": {"path": "IDEA-Research/grounding-dino-tiny", "categories": ["foundation", "vlm", "zero-shot", "open-vocabulary"]},
+    "grounding-dino-base": {"path": "IDEA-Research/grounding-dino-base", "categories": ["foundation", "vlm", "zero-shot", "open-vocabulary"]},
   }
 
   def __init__(self, model_name: str, device: str, conf: float, iou: float):
