@@ -11,7 +11,7 @@ from tqdm.auto import tqdm
 
 from detection.core.interfaces import BoundingBox, Detection, Detector, ModelConfig
 from detection.core.registry import ModelRegistry
-from detection.evaluation.metrics import EvaluationMetrics, evaluate_detections, evaluate_with_multiple_iou_thresholds
+from detection.evaluation.metrics import EvaluationMetrics, SpeedVsThresholdData, evaluate_detections, evaluate_with_multiple_iou_thresholds
 from detection.evaluation.report import generate_markdown_report
 from detection.evaluation.visualization import DetectionVisualizer
 
@@ -428,3 +428,72 @@ class ModelEvaluator:
       generate_markdown_report(results_dict, combined_metrics, benchmark_results["metadata"], self.output_dir)
 
     return results_dict, combined_metrics
+
+  def benchmark_speed_at_thresholds(self, video_path: str, thresholds: list[float] | None = None, num_frames: int = 75) -> SpeedVsThresholdData:
+    """Benchmark model speed at different confidence thresholds"""
+    if thresholds is None:
+      thresholds = [0, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9]
+
+    model = ModelRegistry.create_from_config(self.model_config)
+
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+      raise ValueError(f"Could not open video: {video_path}")
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    if total_frames < num_frames:
+      num_frames = total_frames
+
+    sample_indices = np.linspace(0, total_frames - 1, num_frames, dtype=int)
+
+    frames = []
+    for idx in sample_indices:
+      cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+      ret, frame = cap.read()
+      if ret:
+        frames.append(frame)
+
+    if len(frames) < 10:
+      raise ValueError(f"Not enough frames in video: {video_path}")
+
+    if hasattr(model, 'conf_threshold'):
+      original_conf = model.conf_threshold
+      model.conf_threshold = 0.25
+
+    print("Warming up model...")
+    for _ in range(15):
+      _ = model.predict(frames[0])
+
+    speed_data = SpeedVsThresholdData()
+
+    for threshold in thresholds:
+      if hasattr(model, 'conf_threshold'):
+        model.conf_threshold = threshold
+
+      print(f"Testing threshold {threshold:.2f}...")
+
+      times = []
+      for frame in frames:
+        start_time = time.perf_counter()
+        _ = model.predict(frame)
+        end_time = time.perf_counter()
+        times.append(end_time - start_time)
+
+      avg_time = np.mean(times)
+      min_time = np.min(times)
+      max_time = np.max(times)
+      std_time = np.std(times)
+      fps = 1.0 / avg_time if avg_time > 0 else 0
+
+      speed_data.thresholds.append(threshold)
+      speed_data.inference_times.append(avg_time)
+      speed_data.fps_values.append(fps)
+
+      print(f"  Threshold {threshold:.2f}: {avg_time * 1000:.1f}ms ±{std_time * 1000:.1f}ms (min: {min_time * 1000:.1f}ms, max: {max_time * 1000:.1f}ms)")
+      print(f"  FPS: {fps:.1f}")
+
+    if hasattr(model, 'conf_threshold'):
+      model.conf_threshold = original_conf
+
+    cap.release()
+    return speed_data

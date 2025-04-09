@@ -12,7 +12,7 @@ from detection.evaluation.metrics import EvaluationMetrics
 def main():
   start_time = time.perf_counter()
 
-  model_name = "yolov8m-pose"  # "yolov8m-pose", "rtdetrv2-r18vd", or another model
+  model_name = "rtdetrv2-r18vd"  # "yolov8m-pose", "rtdetrv2-r18vd", or another model
   dataset_name = "evanette001"
 
   # Define whether to visualize
@@ -173,6 +173,29 @@ def main():
   print("\nPerformance:")
   print(f"Average Inference Time: {avg_metrics['avg_inference_time'] * 1000:.2f} ms")
   print(f"Average FPS: {avg_metrics['fps']:.2f}")
+
+  if output_dir:
+    print("\nBenchmarking speed at different thresholds...")
+
+    video_files = sorted(output_dir["videos"].glob("*.mp4"))
+    if video_files:
+      benchmark_video = str(video_files[0])
+      print(f"Using {Path(benchmark_video).name} for speed benchmarking")
+      speed_data = evaluator.benchmark_speed_at_thresholds(benchmark_video)
+
+      if combined_metrics:
+        combined_metrics.speed_vs_threshold = speed_data
+        combined_metrics.optimal_threshold = optimal_threshold
+
+        if output_dir:
+          combined_metrics.plot_speed_vs_threshold(f"{output_dir['plots']}/speed_vs_threshold.png")
+
+        idx = np.abs(np.array(speed_data.thresholds) - optimal_threshold).argmin()
+        if idx < len(speed_data.thresholds):
+          opt_fps = speed_data.fps_values[idx]
+          print(f"\nSpeed at optimal threshold ({optimal_threshold:.2f}): {opt_fps:.1f} FPS")
+    else:
+      print("No video files found for benchmarking speed")
 
   end_time = time.perf_counter()
   total_seconds = end_time - start_time

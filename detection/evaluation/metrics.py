@@ -39,6 +39,15 @@ class DetectionMetrics:
 
 
 @dataclass
+class SpeedVsThresholdData:
+  """Data for analyzing speed vs confidence threshold tradeoffs"""
+
+  thresholds: list[float] = field(default_factory=list)
+  inference_times: list[float] = field(default_factory=list)  # in seconds
+  fps_values: list[float] = field(default_factory=list)
+
+
+@dataclass
 class EvaluationMetrics:
   """Complete evaluation metrics for a video or dataset"""
 
@@ -54,6 +63,8 @@ class EvaluationMetrics:
   threshold_metrics: dict[float, DetectionMetrics] = field(default_factory=dict)
   ap_per_iou: dict[float, float] = field(default_factory=dict)
   pr_curve_data: PRCurveData = field(default_factory=lambda: {"precisions": np.array([]), "recalls": np.array([]), "thresholds": np.array([])})
+
+  speed_vs_threshold: SpeedVsThresholdData = field(default_factory=SpeedVsThresholdData)
 
   def save_pr_curve(self, output_path: str = "pr_curve.png", mark_thresholds: list[float] | None = None) -> None:
     try:
@@ -271,6 +282,73 @@ class EvaluationMetrics:
     else:
       best_idx = np.argmax(f1_scores)
       return thresholds[best_idx], f1_scores[best_idx]
+
+  def plot_speed_vs_threshold(self, output_path: str = "speed_vs_threshold.png") -> None:
+    """Plot speed (FPS) vs confidence threshold"""
+    try:
+      import matplotlib.pyplot as plt
+
+      plt.figure(figsize=(10, 6))
+      plt.style.use('seaborn-v0_8-whitegrid')
+
+      plt.plot(self.speed_vs_threshold.thresholds, self.speed_vs_threshold.fps_values, marker='o', linewidth=2, markersize=6, color='#1f77b4', alpha=0.8)
+
+      plt.fill_between(self.speed_vs_threshold.thresholds, self.speed_vs_threshold.fps_values, alpha=0.2, color='#1f77b4')
+
+      plt.xlabel('Confidence Threshold', fontsize=12, fontweight='bold')
+      plt.ylabel('Speed (FPS)', fontsize=12, fontweight='bold')
+      plt.title('Inference Speed vs Confidence Threshold', fontsize=14, fontweight='bold')
+
+      if hasattr(self, 'optimal_threshold') and self.optimal_threshold > 0:
+        idx = np.abs(np.array(self.speed_vs_threshold.thresholds) - self.optimal_threshold).argmin()
+        if idx < len(self.speed_vs_threshold.thresholds):
+          x = self.speed_vs_threshold.thresholds[idx]
+          y = self.speed_vs_threshold.fps_values[idx]
+
+          plt.plot(x, y, 'ro', markersize=10, zorder=10, markeredgewidth=2, markeredgecolor='white')
+
+          max_fps = max(self.speed_vs_threshold.fps_values)
+          y_range = max_fps * 0.2
+
+          if y > max_fps * 0.7:
+            y_text = y - y_range
+            align = 'center'
+            arrow_props = dict(arrowstyle="->", color='red', connectionstyle="arc3,rad=0.3")
+          else:
+            y_text = y + y_range
+            align = 'center'
+            arrow_props = dict(arrowstyle="->", color='red', connectionstyle="arc3,rad=-0.3")
+
+          plt.annotate(
+            f'Optimal F1 threshold: {x:.2f}\nFPS: {y:.1f}',
+            xy=(x, y),
+            xytext=(x, y_text),
+            arrowprops=arrow_props,
+            bbox=dict(boxstyle="round,pad=0.4", fc="white", ec="red", alpha=0.9),
+            fontsize=10,
+            fontweight='bold',
+            color='black',
+            ha=align,
+            zorder=11,
+          )
+
+      plt.grid(True, alpha=0.3, linestyle='--')
+
+      plt.gca().spines['right'].set_visible(False)
+      plt.gca().spines['top'].set_visible(False)
+
+      if hasattr(self, 'optimal_threshold'):
+        y_max = max(self.speed_vs_threshold.fps_values) * 1.25
+        plt.ylim(0, y_max)
+
+      plt.tight_layout()
+      plt.savefig(output_path, dpi=150, bbox_inches='tight')
+      plt.close()
+
+      print(f"Saved speed vs threshold curve to {output_path}")
+
+    except Exception as e:
+      print(f"Error generating speed vs threshold curve: {e}")
 
 
 def calculate_iou(box1: BoundingBox, box2: BoundingBox) -> float:
