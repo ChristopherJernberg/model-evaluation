@@ -199,6 +199,11 @@ class ModelEvaluator:
     video_dir = data_dir / "videos"
     gt_dir = data_dir / "gt"
 
+    if not video_dir.exists():
+      raise FileNotFoundError(f"Video directory not found: {video_dir}")
+    if not gt_dir.exists():
+      raise FileNotFoundError(f"Ground truth directory not found: {gt_dir}")
+
     if self.visualize:
       output_dir_videos = self.output_dir.get("videos") if self.output_dir is not None else None
       if output_dir_videos is not None:
@@ -206,14 +211,21 @@ class ModelEvaluator:
 
     self.load_model(self.model_config)
 
+    video_files = sorted(video_dir.glob("*.mp4"))
+
     process_args = []
     videos = []
-    for i in range(1, 5):
-      video_path = video_dir / f"{i}.mp4"
-      gt_path = gt_dir / f"{i}.csv"
-      if video_path.exists() and gt_path.exists():
+
+    for idx, video_path in enumerate(video_files):
+      video_name = video_path.stem
+      gt_path = gt_dir / f"{video_name}.csv"
+
+      if gt_path.exists():
         videos.append(video_path)
-        output_path = str(self.output_dir["videos"] / f"{i}.mp4") if self.output_dir is not None and "videos" in self.output_dir and self.visualize else None
+        output_path = None
+        if self.output_dir is not None and "videos" in self.output_dir and self.visualize:
+          output_path = str(self.output_dir["videos"] / f"{video_name}.mp4")
+
         process_args.append(
           (
             str(video_path),
@@ -221,7 +233,7 @@ class ModelEvaluator:
             self.model_config,
             output_path,
             self.visualize,
-            i,
+            idx,
           )
         )
 

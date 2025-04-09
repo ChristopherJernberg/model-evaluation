@@ -12,7 +12,8 @@ from detection.evaluation.metrics import EvaluationMetrics
 def main():
   start_time = time.perf_counter()
 
-  model_name = "yolo12m"  # "yolov8m-pose", "rtdetrv2-r18vd", or another model
+  model_name = "yolov8m-pose"  # "yolov8m-pose", "rtdetrv2-r18vd", or another model
+  dataset_name = "evanette001"
 
   # Define whether to visualize
   visualize = True
@@ -46,8 +47,8 @@ def main():
 
   evaluator = ModelEvaluator(model_config, output_dir=output_dir, visualize=visualize)
 
-  # Evaluate all videos in dataset using parallel processing
-  results, combined_metrics = evaluator.evaluate_dataset(Path("data"), num_workers=None, start_time=start_time)
+  dataset_path = Path("testdata") / dataset_name
+  results, combined_metrics = evaluator.evaluate_dataset(dataset_path, num_workers=None, start_time=start_time)
 
   optimal_threshold = 0.25
   optimal_f1 = 0.0
