@@ -479,15 +479,15 @@ class ModelEvaluator:
         end_time = time.perf_counter()
         times.append(end_time - start_time)
 
-      avg_time = np.mean(times)
-      min_time = np.min(times)
-      max_time = np.max(times)
-      std_time = np.std(times)
-      fps = 1.0 / avg_time if avg_time > 0 else 0
+      avg_time = float(np.mean(times))
+      min_time = float(np.min(times))
+      max_time = float(np.max(times))
+      std_time = float(np.std(times))
+      fps = float(1.0 / avg_time) if avg_time > 0 else 0.0
 
-      speed_data.thresholds.append(threshold)
-      speed_data.inference_times.append(avg_time)
-      speed_data.fps_values.append(fps)
+      speed_data.thresholds.append(float(threshold))
+      speed_data.inference_times.append(float(avg_time))
+      speed_data.fps_values.append(float(fps))
 
       print(f"  Threshold {threshold:.2f}: {avg_time * 1000:.1f}ms ±{std_time * 1000:.1f}ms (min: {min_time * 1000:.1f}ms, max: {max_time * 1000:.1f}ms)")
       print(f"  FPS: {fps:.1f}")
