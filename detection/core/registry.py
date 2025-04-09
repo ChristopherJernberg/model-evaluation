@@ -97,7 +97,7 @@ class ModelRegistry:
     return sorted(cls._model_map.keys())
 
   @classmethod
-  def list_models_by_category(cls, category: str = None) -> list[str]:
+  def list_models_by_category(cls, category: str | None = None) -> list[str]:
     """List all models in a category"""
     if category is None:
       return cls.list_supported_models()
