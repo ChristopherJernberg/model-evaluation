@@ -2,18 +2,19 @@ import cv2
 import numpy as np
 
 from detection.core.interfaces import BoundingBox, Detection
+from detection.evaluation.metrics import MatchedIoUs
 
 
 class DetectionVisualizer:
-  def __init__(self, output_path: str | None = None, model_name: str = None):
+  def __init__(self, output_path: str | None = None, model_name: str = "Predictions"):
     self.output_path = output_path
-    self.video_writer = None
-    self.model_name = model_name or "Predictions"
+    self.video_writer: cv2.VideoWriter | None = None
+    self.model_name = model_name
 
   def setup_video_writer(self, fps: int, width: int, height: int) -> None:
     if self.output_path:
-      fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-      self.video_writer = cv2.VideoWriter(self.output_path, fourcc, fps, (width * 2, height))
+      fourcc = cv2.VideoWriter_fourcc(*"mp4v")  # type: ignore
+      self.video_writer = cv2.VideoWriter(self.output_path, fourcc, fps, (width * 2, height))  # type: ignore
 
   def draw_boxes(
     self,
@@ -28,7 +29,7 @@ class DetectionVisualizer:
       cv2.rectangle(frame_copy, (x1, y1), (x1 + w, y1 + h), color, 2)
     return frame_copy
 
-  def draw_boxes_gt(self, frame: np.ndarray, boxes: list[BoundingBox], unmatched_gt: list[int] = None) -> np.ndarray:
+  def draw_boxes_gt(self, frame: np.ndarray, boxes: list[BoundingBox], unmatched_gt: list[int] | None = None) -> np.ndarray:
     frame_copy = frame.copy()
     font = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 0.8
@@ -56,7 +57,7 @@ class DetectionVisualizer:
 
     return frame_copy
 
-  def draw_boxes_pred(self, frame: np.ndarray, boxes: list[Detection], matched_ious: dict = None) -> np.ndarray:
+  def draw_boxes_pred(self, frame: np.ndarray, boxes: list[Detection], matched_ious: MatchedIoUs | None = None) -> np.ndarray:
     frame_copy = frame.copy()
     font = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 0.8
@@ -79,7 +80,7 @@ class DetectionVisualizer:
       if conf is not None:
         text_parts.append(f"conf: {conf:.2f}")
 
-      if is_matched:
+      if is_matched and matched_ious is not None:
         text_parts.append(f"IoU: {matched_ious[i]:.2f}")
         text_parts.append("TP")
       else:
@@ -102,8 +103,8 @@ class DetectionVisualizer:
     gt_boxes: list[BoundingBox],
     pred_boxes: list[Detection],
     frame_idx: int,
-    matched_ious: dict = None,
-    unmatched_gt: list[int] = None,
+    matched_ious: MatchedIoUs | None = None,
+    unmatched_gt: list[int] | None = None,
   ) -> np.ndarray:
     width = frame.shape[1]
 

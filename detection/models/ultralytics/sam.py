@@ -34,7 +34,7 @@ class SAMModel(UltralyticsModel):
   }
 
   def _load_model(self, model_path: str) -> Any:
-    from ultralytics import SAM
+    from ultralytics import SAM  # type: ignore
 
     return SAM(model_path)
 

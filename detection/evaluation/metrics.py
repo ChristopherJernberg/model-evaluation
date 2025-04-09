@@ -188,7 +188,7 @@ class EvaluationMetrics:
 
     combined = cls()
 
-    all_thresholds = set()
+    all_thresholds: set[float] = set()
     for metrics in metrics_list:
       if metrics.pr_curve_data and "thresholds" in metrics.pr_curve_data:
         all_thresholds.update(metrics.pr_curve_data["thresholds"])
@@ -198,9 +198,9 @@ class EvaluationMetrics:
     if not sorted_thresholds:
       return combined
 
-    avg_precisions = []
-    avg_recalls = []
-    final_thresholds = []
+    avg_precisions: list[float] = []
+    avg_recalls: list[float] = []
+    final_thresholds: list[float] = []
 
     for threshold in sorted_thresholds:
       if threshold > 0.99 or threshold < 0.01:
@@ -228,18 +228,18 @@ class EvaluationMetrics:
     if not final_thresholds:
       return combined
 
-    avg_precisions = np.array(avg_precisions)
-    avg_recalls = np.array(avg_recalls)
-    final_thresholds = np.array(final_thresholds)
+    avg_precisions_array = np.array(avg_precisions)
+    avg_recalls_array = np.array(avg_recalls)
+    final_thresholds_array = np.array(final_thresholds)
 
-    sort_idx = np.argsort(avg_recalls)
-    avg_precisions = avg_precisions[sort_idx]
-    avg_recalls = avg_recalls[sort_idx]
-    final_thresholds = final_thresholds[sort_idx]
+    sort_idx = np.argsort(avg_recalls_array)
+    avg_precisions_array = avg_precisions_array[sort_idx]
+    avg_recalls_array = avg_recalls_array[sort_idx]
+    final_thresholds_array = final_thresholds_array[sort_idx]
 
-    combined.ap50 = calculate_ap(avg_precisions, avg_recalls)
+    combined.ap50 = calculate_ap(avg_precisions_array, avg_recalls_array)
 
-    combined.pr_curve_data = {"recalls": avg_recalls, "precisions": avg_precisions, "thresholds": final_thresholds}
+    combined.pr_curve_data = {"recalls": avg_recalls_array, "precisions": avg_precisions_array, "thresholds": final_thresholds_array}
 
     combined.mAP = combined.ap50
     combined.ap75 = combined.ap50
@@ -275,18 +275,18 @@ def calculate_iou(box1: BoundingBox, box2: BoundingBox) -> float:
 def evaluate_detections(
   gt_boxes: list[BoundingBox], pred_boxes: list[Detection], iou_threshold: float = 0.5
 ) -> tuple[DetectionMetrics, MatchedIoUs, list[int]]:
+  matched_ious: MatchedIoUs = {}
   matches = []
   unmatched_gt = list(range(len(gt_boxes)))
   unmatched_pred = list(range(len(pred_boxes)))
-  matched_ious = {}
 
   iou_matrix = np.zeros((len(gt_boxes), len(pred_boxes)))
   for i, gt_box in enumerate(gt_boxes):
     for j, pred_box in enumerate(pred_boxes):
-      iou_matrix[i, j] = calculate_iou(gt_box, pred_box)
+      iou_matrix[i, j] = calculate_iou(gt_box, pred_box[:4])
 
   while len(unmatched_gt) > 0 and len(unmatched_pred) > 0:
-    max_iou = 0
+    max_iou: float = 0.0
     best_match = (-1, -1)
 
     for i in unmatched_gt:
@@ -297,7 +297,7 @@ def evaluate_detections(
 
     if max_iou >= iou_threshold:
       matches.append(best_match)
-      matched_ious[best_match[1]] = max_iou
+      matched_ious[best_match[1]] = float(max_iou)
       unmatched_gt.remove(best_match[0])
       unmatched_pred.remove(best_match[1])
     else:
@@ -314,7 +314,7 @@ def evaluate_detections(
 
 def calculate_ap(precisions: np.ndarray, recalls: np.ndarray) -> float:
   """Calculate Average Precision using 101-point interpolation (COCO standard)."""
-  ap = 0
+  ap = 0.0
   for r in np.linspace(0, 1, 101):
     valid_precisions = precisions[recalls >= r]
     if len(valid_precisions) > 0:
@@ -327,29 +327,30 @@ def calculate_ap(precisions: np.ndarray, recalls: np.ndarray) -> float:
 
 def calculate_precision_recall_curve(all_gt_boxes: list[list[BoundingBox]], all_pred_boxes: list[list[Detection]], iou_threshold: float) -> PRCurveData:
   """Calculate precision and recall at each confidence threshold"""
-  all_predictions = []
+  all_predictions: list[tuple[int, Detection, float]] = []
   for frame_idx, frame_preds in enumerate(all_pred_boxes):
     for pred in frame_preds:
-      all_predictions.append((frame_idx, pred, pred[4]))
+      conf = float(pred[4]) if len(pred) > 4 else 0.0
+      all_predictions.append((frame_idx, pred, conf))
 
   all_predictions.sort(key=lambda x: x[2], reverse=True)
 
-  total_gt = sum(len(gt) for gt in all_gt_boxes)
+  total_gt: float = sum(len(gt) for gt in all_gt_boxes)
 
-  tp = np.zeros(len(all_predictions))
-  fp = np.zeros(len(all_predictions))
+  tp = np.zeros(len(all_predictions), dtype=float)
+  fp = np.zeros(len(all_predictions), dtype=float)
 
   gt_matched: list[set[int]] = [set() for _ in range(len(all_gt_boxes))]
 
   for i, (frame_idx, pred, _) in enumerate(all_predictions):
     gt_boxes = all_gt_boxes[frame_idx]
 
-    max_iou = 0
-    matched_gt_idx = -1
+    max_iou: float = 0.0
+    matched_gt_idx: int = -1
 
     for j, gt in enumerate(gt_boxes):
       if j not in gt_matched[frame_idx]:
-        iou = calculate_iou(gt, pred)
+        iou = calculate_iou(gt, pred[:4])
         if iou > max_iou:
           max_iou = iou
           matched_gt_idx = j
@@ -372,18 +373,19 @@ def calculate_precision_recall_curve(all_gt_boxes: list[list[BoundingBox]], all_
   confs = [pred[2] for pred in all_predictions]
   thresholds = np.concatenate(([1.0], confs))
 
-  return {"precisions": precisions, "recalls": recalls, "thresholds": thresholds}
+  result: PRCurveData = {"precisions": precisions, "recalls": recalls, "thresholds": thresholds}
+  return result
 
 
 def evaluate_with_multiple_iou_thresholds(
   all_gt_boxes: list[list[BoundingBox]], all_pred_boxes: list[list[Detection]], iou_thresholds: IoUThresholds | None = None
 ) -> EvaluationMetrics:
   """Evaluate detections with multiple IoU thresholds following COCO protocol"""
-  iou_thresholds = np.arange(0.5, 1.0, 0.05) if iou_thresholds is None else iou_thresholds
+  thresholds: IoUThresholds = np.arange(0.5, 1.0, 0.05) if iou_thresholds is None else iou_thresholds
 
   metrics = EvaluationMetrics()
 
-  for iou_threshold in iou_thresholds:
+  for iou_threshold in thresholds:
     pr_data = calculate_precision_recall_curve(all_gt_boxes, all_pred_boxes, iou_threshold)
     ap = calculate_ap(pr_data["precisions"], pr_data["recalls"])
     metrics.ap_per_iou[iou_threshold] = ap
@@ -394,6 +396,6 @@ def evaluate_with_multiple_iou_thresholds(
     elif np.isclose(iou_threshold, 0.75):
       metrics.ap75 = ap
 
-  metrics.mAP = np.mean(list(metrics.ap_per_iou.values()))
+  metrics.mAP = float(np.mean(list(metrics.ap_per_iou.values())))
 
   return metrics

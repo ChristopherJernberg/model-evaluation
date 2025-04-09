@@ -15,6 +15,6 @@ class RTDETRModel(UltralyticsModel):
   }
 
   def _load_model(self, model_path: str) -> Any:
-    from ultralytics import RTDETR
+    from ultralytics import RTDETR  # type: ignore
 
     return RTDETR(model_path)

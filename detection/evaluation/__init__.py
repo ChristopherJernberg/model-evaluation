@@ -1,6 +1,6 @@
-from detection.evaluation.evaluator import ModelEvaluator
-from detection.evaluation.metrics import DetectionMetrics, EvaluationMetrics
-from detection.evaluation.visualization import DetectionVisualizer
+from .evaluator import ModelEvaluator
+from .metrics import DetectionMetrics, EvaluationMetrics
+from .visualization import DetectionVisualizer
 
 __all__ = [
   "ModelEvaluator",

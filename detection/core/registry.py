@@ -5,16 +5,16 @@ from detection.core.interfaces import Detector, ModelConfig
 
 class ModelRegistry:
   # Maps model_name -> (factory_function, is_pose_capable, categories)
-  _model_map = {}
+  _model_map: dict[str, tuple[Callable, bool, list[str]]] = {}
 
   @classmethod
-  def register_model(cls, model_name: str, factory_func: Callable, is_pose_capable: bool = False, categories: list[str] = None):
+  def register_model(cls, model_name: str, factory_func: Callable, is_pose_capable: bool = False, categories: list[str] | None = None):
     """Register a specific model with its factory function"""
     categories_list = categories or []
     cls._model_map[model_name] = (factory_func, is_pose_capable, categories_list)
 
   @classmethod
-  def register_models_from_class(cls, model_class, is_pose_capable: bool = False, categories: list[str] = None):
+  def register_models_from_class(cls, model_class, is_pose_capable: bool = False, categories: list[str] | None = None):
     """Register all models from a model class's SUPPORTED_MODELS dict"""
     # Always include the class name as a category if no categories provided
     class_categories = categories or []
@@ -34,7 +34,7 @@ class ModelRegistry:
       )
 
   @classmethod
-  def register_class(cls, is_pose_capable: bool = False, categories: list[str] = None):
+  def register_class(cls, is_pose_capable: bool = False, categories: list[str] | None = None):
     """Decorator to register a model class"""
 
     def decorator(model_class):

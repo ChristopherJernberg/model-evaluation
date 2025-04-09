@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from detection.core.interfaces import Detector, ModelConfig
+from detection.core.interfaces import BoundingBox, Detection, Detector, ModelConfig
 from detection.core.registry import ModelRegistry
 from detection.evaluation.metrics import EvaluationMetrics, evaluate_detections, evaluate_with_multiple_iou_thresholds
 from detection.evaluation.report import generate_markdown_report
@@ -23,10 +23,10 @@ def process_video(
   output_path: str | None = None,
   visualize: bool = False,
   progress_idx: int = 0,
-  progress_dict: dict = None,
+  progress_dict: dict[int, int] | None = None,
   conf_threshold: float = 0.05,
   return_raw_data: bool = False,
-) -> tuple[EvaluationMetrics, tuple] | EvaluationMetrics:
+) -> EvaluationMetrics | tuple[EvaluationMetrics, tuple[list[list[BoundingBox]], list[list[Detection]]]]:
   """
   Process a single video and evaluate against ground truth
 
@@ -60,8 +60,8 @@ def process_video(
     visualizer = DetectionVisualizer(output_path=output_path, model_name=model.model_name)
     visualizer.setup_video_writer(fps, width, height)
 
-  total_inference_time = 0
-  frame_count = 0
+  total_inference_time: float = 0.0
+  frame_count: int = 0
 
   all_gt_boxes = []
   all_pred_boxes = []
@@ -96,14 +96,15 @@ def process_video(
     if original_conf is not None and original_conf > conf_threshold:
       display_pred_boxes = [box for box in pred_boxes if box[4] >= original_conf]
 
-    frame_result, matched_ious, unmatched_gt = evaluate_detections(gt_boxes, display_pred_boxes)
+    gt_boxes_typed: list[BoundingBox] = [tuple(box) for box in gt_boxes]
+    frame_result, matched_ious, unmatched_gt = evaluate_detections(gt_boxes_typed, display_pred_boxes)
 
     metrics.frame_metrics.true_positives += frame_result.true_positives
     metrics.frame_metrics.false_positives += frame_result.false_positives
     metrics.frame_metrics.false_negatives += frame_result.false_negatives
 
     if visualizer and output_path:
-      comparison_frame = visualizer.create_comparison_frame(frame, gt_boxes, display_pred_boxes, frame_idx, matched_ious, unmatched_gt)
+      comparison_frame = visualizer.create_comparison_frame(frame, [tuple(box) for box in gt_boxes], display_pred_boxes, frame_idx, matched_ious, unmatched_gt)
       visualizer.write_frame(comparison_frame)
 
     if progress_dict is not None:
@@ -116,7 +117,8 @@ def process_video(
   metrics.avg_inference_time = total_inference_time / frame_count if frame_count > 0 else 0
   metrics.fps = 1 / metrics.avg_inference_time if metrics.avg_inference_time > 0 else 0
 
-  advanced_metrics = evaluate_with_multiple_iou_thresholds(all_gt_boxes, all_pred_boxes)
+  typed_gt_boxes: list[list[BoundingBox]] = [[tuple(box) for box in frame_boxes] for frame_boxes in all_gt_boxes]
+  advanced_metrics = evaluate_with_multiple_iou_thresholds(typed_gt_boxes, all_pred_boxes)
   metrics.ap50 = advanced_metrics.ap50
   metrics.ap75 = advanced_metrics.ap75
   metrics.mAP = advanced_metrics.mAP
@@ -127,12 +129,18 @@ def process_video(
     model.conf_threshold = original_conf
 
   if return_raw_data:
-    return metrics, (all_gt_boxes, all_pred_boxes)
+    typed_return_boxes: tuple[list[list[BoundingBox]], list[list[Detection]]] = (
+      [[tuple(box) for box in frame_boxes] for frame_boxes in all_gt_boxes],
+      all_pred_boxes,
+    )
+    return metrics, typed_return_boxes
   else:
     return metrics
 
 
-def process_video_parallel(video_path, gt_path, model_config, output_path, visualize, progress_idx, progress_dict, return_raw_data=False):
+def process_video_parallel(
+  video_path, gt_path, model_config, output_path, visualize, progress_idx, progress_dict, return_raw_data: bool = False
+) -> EvaluationMetrics | tuple[EvaluationMetrics, tuple[list[list[BoundingBox]], list[list[Detection]]]] | None:
   """Wrapper function for parallel processing"""
   try:
     progress_dict[progress_idx] = 0
@@ -167,13 +175,14 @@ class ModelEvaluator:
     if self.output_dir and self.visualize:
       output_path = self.output_dir["videos"] / f"{video_path.stem}.mp4"
 
-    return process_video(
+    result = process_video(
       str(video_path),
       str(gt_path),
       model,
       str(output_path) if output_path else None,
       visualize=self.visualize,
     )
+    return result if isinstance(result, EvaluationMetrics) else result[0]
 
   def load_model(self, model_config: ModelConfig) -> None:
     """Pre-load a model before parallel processing to avoid multiple downloads"""
@@ -184,14 +193,16 @@ class ModelEvaluator:
       print(f"Error pre-loading model {model_config.name}: {e}")
 
   def evaluate_dataset(
-    self, data_dir: Path, num_workers: int = None, start_time: float = None
+    self, data_dir: Path, num_workers: int | None = None, start_time: float | None = None
   ) -> tuple[dict[int, EvaluationMetrics], EvaluationMetrics | None]:
     """Evaluate model performance on all videos in dataset using parallel processing"""
     video_dir = data_dir / "videos"
     gt_dir = data_dir / "gt"
 
     if self.visualize:
-      print(f"\nVisualization enabled. Comparison videos will be saved to: {self.output_dir['videos']}")
+      output_dir_videos = self.output_dir.get("videos") if self.output_dir is not None else None
+      if output_dir_videos is not None:
+        print(f"\nVisualization enabled. Comparison videos will be saved to: {output_dir_videos}")
 
     self.load_model(self.model_config)
 
@@ -202,7 +213,7 @@ class ModelEvaluator:
       gt_path = gt_dir / f"{i}.csv"
       if video_path.exists() and gt_path.exists():
         videos.append(video_path)
-        output_path = str(self.output_dir["videos"] / f"{i}.mp4") if self.output_dir and self.visualize else None
+        output_path = str(self.output_dir["videos"] / f"{i}.mp4") if self.output_dir is not None and "videos" in self.output_dir and self.visualize else None
         process_args.append(
           (
             str(video_path),
@@ -234,13 +245,16 @@ class ModelEvaluator:
     manager = mp.Manager()
     progress_dict = manager.dict()
 
-    process_args = [(args[0], args[1], args[2], args[3], args[4], i, progress_dict, True) for i, args in enumerate(process_args)]
+    parallel_args = []
+    for i, args in enumerate(process_args):
+      if len(args) >= 5:
+        parallel_args.append((args[0], args[1], args[2], args[3], args[4], i, progress_dict, True))
 
     with tqdm(total=total_frames, desc="Overall progress", position=0, leave=False) as main_pbar:
       last_total = 0
 
       with mp.Pool(processes=active_workers) as pool:
-        async_result = pool.starmap_async(process_video_parallel, process_args)
+        async_result = pool.starmap_async(process_video_parallel, parallel_args)
 
         while not async_result.ready():
           current_total = sum(progress_dict.values())
@@ -258,7 +272,7 @@ class ModelEvaluator:
     combined_metrics = None
 
     for i, result in enumerate(results_with_data):
-      if result is not None:
+      if result is not None and isinstance(result, tuple) and len(result) == 2:
         metrics, (gt_boxes, pred_boxes) = result
         results_dict[i + 1] = metrics
         all_videos_gt_boxes.append(gt_boxes)
@@ -299,6 +313,12 @@ class ModelEvaluator:
       ew_recall = equally_weighted_metrics.pr_curve_data["recalls"][ew_threshold_idx]
       ew_f1 = 2 * (ew_precision * ew_recall) / (ew_precision + ew_recall) if (ew_precision + ew_recall) > 0 else 0
 
+      total_processing_time = 0.0
+      if start_time is not None:
+        total_processing_time = time.perf_counter() - start_time
+      else:
+        total_processing_time = 0.0
+
       benchmark_results = {
         "metadata": {
           "model_name": self.model_config.name,
@@ -308,7 +328,7 @@ class ModelEvaluator:
           "num_videos": len(results_dict),
           "test_date": time.strftime("%Y-%m-%d"),
           "test_timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-          "total_processing_time_seconds": time.perf_counter() - start_time,
+          "total_processing_time_seconds": total_processing_time,
         },
         "summary": {
           "arithmetic_mean": {
@@ -356,28 +376,31 @@ class ModelEvaluator:
         json.dump(eq_weighted_pr_data, f)
 
       for video_id, metrics in results_dict.items():
-        benchmark_results["per_video_results"][str(video_id)] = {
-          "mAP": metrics.mAP,
-          "ap50": metrics.ap50,
-          "ap75": metrics.ap75,
-          "precision": metrics.frame_metrics.precision,
-          "recall": metrics.frame_metrics.recall,
-          "f1_score": metrics.frame_metrics.f1_score,
-          "true_positives": metrics.frame_metrics.true_positives,
-          "false_positives": metrics.frame_metrics.false_positives,
-          "false_negatives": metrics.frame_metrics.false_negatives,
-          "fps": metrics.fps,
-          "inference_time_ms": metrics.avg_inference_time * 1000,
-          "pr_curve_file": f"video_{video_id}_pr_data.json",
-        }
+        if "per_video_results" in benchmark_results:
+          per_video_results = benchmark_results["per_video_results"]
+          if isinstance(per_video_results, dict):
+            per_video_results[str(video_id)] = {
+              "mAP": metrics.mAP,
+              "ap50": metrics.ap50,
+              "ap75": metrics.ap75,
+              "precision": metrics.frame_metrics.precision,
+              "recall": metrics.frame_metrics.recall,
+              "f1_score": metrics.frame_metrics.f1_score,
+              "true_positives": metrics.frame_metrics.true_positives,
+              "false_positives": metrics.frame_metrics.false_positives,
+              "false_negatives": metrics.frame_metrics.false_negatives,
+              "fps": metrics.fps,
+              "inference_time_ms": metrics.avg_inference_time * 1000,
+              "pr_curve_file": f"video_{video_id}_pr_data.json",
+            }
 
-        pr_data = {
-          "precisions": metrics.pr_curve_data["precisions"].tolist(),
-          "recalls": metrics.pr_curve_data["recalls"].tolist(),
-          "thresholds": metrics.pr_curve_data["thresholds"].tolist(),
-        }
-        with open(f"{self.output_dir['metrics']}/video_{video_id}_pr_data.json", 'w') as f:
-          json.dump(pr_data, f)
+          pr_data = {
+            "precisions": metrics.pr_curve_data["precisions"].tolist(),
+            "recalls": metrics.pr_curve_data["recalls"].tolist(),
+            "thresholds": metrics.pr_curve_data["thresholds"].tolist(),
+          }
+          with open(f"{self.output_dir['metrics']}/video_{video_id}_pr_data.json", 'w') as f:
+            json.dump(pr_data, f)
 
       with open(f"{self.output_dir['metrics']}/benchmark_results.json", 'w') as f:
         json.dump(benchmark_results, f, indent=2)

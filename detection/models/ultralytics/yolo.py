@@ -72,7 +72,7 @@ class YOLOModel(UltralyticsModel):
   }
 
   def _load_model(self, model_path: str) -> Any:
-    from ultralytics import YOLO
+    from ultralytics import YOLO  # type: ignore
 
     return YOLO(model_path)
 
@@ -182,7 +182,7 @@ class YOLOSegModel(YOLOModel):
     self, frame: np.ndarray, verbose: bool = VERBOSE, conf: float = CONFIDENCE_THRESHOLD
   ) -> list[tuple[tuple[float, float, float, float, float], np.ndarray]]:
     results = self.model(frame, verbose=verbose, conf=conf)
-    instances = []
+    instances: list[tuple[tuple[float, float, float, float, float], np.ndarray]] = []
 
     if not results or results[0].masks is None:
       return instances

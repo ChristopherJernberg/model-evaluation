@@ -5,6 +5,8 @@ Report generation module for model evaluation results.
 import time
 from pathlib import Path
 
+import markdown
+
 
 def generate_markdown_report(results, combined_metrics, metadata, output_dir):
   """Generate a markdown report summarizing benchmark results."""
@@ -98,8 +100,6 @@ def generate_html_report(markdown_path, html_path):
   Requires pymdownx or markdown package. If not available, skips HTML generation.
   """
   try:
-    import markdown
-
     with open(markdown_path) as f:
       md_content = f.read()
 
@@ -111,7 +111,12 @@ def generate_html_report(markdown_path, html_path):
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <title>Model Evaluation Report</title>
             <style>
-                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; line-height: 1.6; padding: 1em; max-width: 1200px; margin: 0 auto; color: #333; }}
+                body {{ font-family: 'Helvetica Neue', sans-serif;
+                       line-height: 1.6;
+                       padding: 1em;
+                       max-width: 1200px;
+                       margin: 0 auto;
+                       color: #333; }}
                 h1, h2, h3 {{ color: #2c3e50; }}
                 table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
                 th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
