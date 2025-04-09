@@ -68,7 +68,14 @@ def process_video(
 
   if hasattr(model, 'conf_threshold'):
     original_conf = model.conf_threshold
-    model.conf_threshold = min(conf_threshold, model.conf_threshold)
+
+    # If conf threshold is 0, use 0.15 for inference speed measurement
+    if original_conf == 0:
+      actual_inference_conf = 0.15
+    else:
+      actual_inference_conf = model.conf_threshold
+
+    model.conf_threshold = actual_inference_conf
 
   for frame_idx in range(frame_limit):
     cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
@@ -93,7 +100,7 @@ def process_video(
     all_pred_boxes.append(pred_boxes)
 
     display_pred_boxes = pred_boxes
-    if original_conf is not None and original_conf > conf_threshold:
+    if original_conf is not None and original_conf > actual_inference_conf:
       display_pred_boxes = [box for box in pred_boxes if box[4] >= original_conf]
 
     gt_boxes_typed: list[BoundingBox] = [tuple(box) for box in gt_boxes]
@@ -118,15 +125,16 @@ def process_video(
   metrics.fps = 1 / metrics.avg_inference_time if metrics.avg_inference_time > 0 else 0
 
   typed_gt_boxes: list[list[BoundingBox]] = [[tuple(box) for box in frame_boxes] for frame_boxes in all_gt_boxes]
+
+  if hasattr(model, 'conf_threshold'):
+    model.conf_threshold = original_conf
+
   advanced_metrics = evaluate_with_multiple_iou_thresholds(typed_gt_boxes, all_pred_boxes)
   metrics.ap50 = advanced_metrics.ap50
   metrics.ap75 = advanced_metrics.ap75
   metrics.mAP = advanced_metrics.mAP
   metrics.ap_per_iou = advanced_metrics.ap_per_iou
   metrics.pr_curve_data = advanced_metrics.pr_curve_data
-
-  if hasattr(model, 'conf_threshold'):
-    model.conf_threshold = original_conf
 
   if return_raw_data:
     typed_return_boxes: tuple[list[list[BoundingBox]], list[list[Detection]]] = (
