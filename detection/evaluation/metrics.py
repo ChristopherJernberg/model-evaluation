@@ -246,6 +246,32 @@ class EvaluationMetrics:
 
     return combined
 
+  def find_optimal_threshold(self, metric: str = "f1") -> tuple[float, float]:
+    if not self.pr_curve_data or "thresholds" not in self.pr_curve_data:
+      return 0.0, 0.0
+
+    precisions = self.pr_curve_data["precisions"]
+    recalls = self.pr_curve_data["recalls"]
+    thresholds = self.pr_curve_data["thresholds"]
+
+    f1_scores = np.zeros_like(thresholds)
+    for i in range(len(thresholds)):
+      if precisions[i] + recalls[i] > 0:
+        f1_scores[i] = 2 * (precisions[i] * recalls[i]) / (precisions[i] + recalls[i])
+
+    if metric == "f1":
+      best_idx = np.argmax(f1_scores)
+      return thresholds[best_idx], f1_scores[best_idx]
+    elif metric == "precision":
+      best_idx = np.argmax(precisions)
+      return thresholds[best_idx], precisions[best_idx]
+    elif metric == "recall":
+      best_idx = np.argmax(recalls)
+      return thresholds[best_idx], recalls[best_idx]
+    else:
+      best_idx = np.argmax(f1_scores)
+      return thresholds[best_idx], f1_scores[best_idx]
+
 
 def calculate_iou(box1: BoundingBox, box2: BoundingBox) -> float:
   """Calculate IoU between two boxes [x1,y1,w,h]"""

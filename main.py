@@ -12,7 +12,7 @@ from detection.evaluation.metrics import EvaluationMetrics
 def main():
   start_time = time.perf_counter()
 
-  model_name = "rtdetrv2-r18vd"  # "yolov8m-pose", "rtdetrv2-r18vd", or another model
+  model_name = "yolo12m"  # "yolov8m-pose", "rtdetrv2-r18vd", or another model
 
   # Define whether to visualize
   visualize = True
@@ -36,10 +36,11 @@ def main():
   else:
     output_dir = None
 
+  # Set initial conf_threshold to 0 to evaluate across all thresholds
   model_config = ModelConfig(
     name=model_name,
     device="mps",  # "mps", "cuda", or "cpu"
-    conf_threshold=0.6,
+    conf_threshold=0,
     iou_threshold=0.45,
   )
 
@@ -47,6 +48,21 @@ def main():
 
   # Evaluate all videos in dataset using parallel processing
   results, combined_metrics = evaluator.evaluate_dataset(Path("data"), num_workers=None, start_time=start_time)
+
+  optimal_threshold = 0.25
+  optimal_f1 = 0.0
+
+  if combined_metrics:
+    optimal_threshold, optimal_f1 = combined_metrics.find_optimal_threshold(metric="f1")
+
+    print(f"\nOptimal threshold based on F1 score: {optimal_threshold:.3f} (F1: {optimal_f1:.3f})")
+
+    threshold_idx = np.abs(combined_metrics.pr_curve_data["thresholds"] - optimal_threshold).argmin()
+    optimal_precision = combined_metrics.pr_curve_data["precisions"][threshold_idx]
+    optimal_recall = combined_metrics.pr_curve_data["recalls"][threshold_idx]
+    print(f"At this threshold - Precision: {optimal_precision:.3f}, Recall: {optimal_recall:.3f}")
+
+    model_config.conf_threshold = optimal_threshold
 
   if output_dir:
     with open(f"{output_dir['metrics']}/benchmark_results.json") as f:
@@ -61,12 +77,18 @@ def main():
     print(f"mAP (IoU=0.5:0.95): {metrics.mAP:.4f}")
     print(f"AP@0.5: {metrics.ap50:.4f}")
     print(f"AP@0.75: {metrics.ap75:.4f}")
-    print(f"Precision: {metrics.frame_metrics.precision:.4f}")
-    print(f"Recall: {metrics.frame_metrics.recall:.4f}")
-    print(f"F1 Score: {metrics.frame_metrics.f1_score:.4f}")
+
+    threshold_idx = np.abs(metrics.pr_curve_data["thresholds"] - optimal_threshold).argmin()
+    opt_precision = metrics.pr_curve_data["precisions"][threshold_idx]
+    opt_recall = metrics.pr_curve_data["recalls"][threshold_idx]
+    opt_f1 = 2 * (opt_precision * opt_recall) / (opt_precision + opt_recall) if (opt_precision + opt_recall) > 0 else 0
+
+    print(f"Precision@{optimal_threshold:.3f}: {opt_precision:.4f}")
+    print(f"Recall@{optimal_threshold:.3f}: {opt_recall:.4f}")
+    print(f"F1 Score@{optimal_threshold:.3f}: {opt_f1:.4f}")
 
     if output_dir:
-      metrics.save_pr_curve(f"{output_dir['plots']}/video_{video_id}_pr_curve.png", mark_thresholds=[model_config.conf_threshold])
+      metrics.save_pr_curve(f"{output_dir['plots']}/video_{video_id}_pr_curve.png", mark_thresholds=[optimal_threshold])
 
     print("\nCounts:")
     print(f"True Positives: {metrics.frame_metrics.true_positives}")
@@ -83,9 +105,15 @@ def main():
     print(f"mAP (IoU=0.5:0.95): {detection_weighted['mAP']:.4f}")
     print(f"AP@0.5: {detection_weighted['ap50']:.4f}")
     print(f"AP@0.75: {detection_weighted['ap75']:.4f}")
-    print(f"Precision@{model_config.conf_threshold}: {detection_weighted['precision']:.4f}")
-    print(f"Recall@{model_config.conf_threshold}: {detection_weighted['recall']:.4f}")
-    print(f"F1 Score@{model_config.conf_threshold}: {detection_weighted['f1_score']:.4f}")
+
+    threshold_idx = np.abs(combined_metrics.pr_curve_data["thresholds"] - optimal_threshold).argmin()
+    comb_precision = combined_metrics.pr_curve_data["precisions"][threshold_idx]
+    comb_recall = combined_metrics.pr_curve_data["recalls"][threshold_idx]
+    comb_f1 = 2 * (comb_precision * comb_recall) / (comb_precision + comb_recall) if (comb_precision + comb_recall) > 0 else 0
+
+    print(f"Precision@{optimal_threshold:.3f}: {comb_precision:.4f}")
+    print(f"Recall@{optimal_threshold:.3f}: {comb_recall:.4f}")
+    print(f"F1 Score@{optimal_threshold:.3f}: {comb_f1:.4f}")
 
     print("\nCombined Counts:")
     combined_tp = sum(m.frame_metrics.true_positives for m in results.values())
@@ -95,11 +123,11 @@ def main():
     print(f"False Positives: {combined_fp}")
     print(f"False Negatives: {combined_fn}")
 
-    combined_metrics.save_pr_curve(f"{output_dir['plots']}/combined_pr_curve.png", mark_thresholds=[model_config.conf_threshold])
+    combined_metrics.save_pr_curve(f"{output_dir['plots']}/combined_pr_curve.png", mark_thresholds=[optimal_threshold])
 
     equally_weighted_metrics = EvaluationMetrics.create_equally_weighted_combined(list(results.values()))
 
-    ew_threshold_idx = np.abs(equally_weighted_metrics.pr_curve_data["thresholds"] - model_config.conf_threshold).argmin()
+    ew_threshold_idx = np.abs(equally_weighted_metrics.pr_curve_data["thresholds"] - optimal_threshold).argmin()
     ew_precision = equally_weighted_metrics.pr_curve_data["precisions"][ew_threshold_idx]
     ew_recall = equally_weighted_metrics.pr_curve_data["recalls"][ew_threshold_idx]
     ew_f1 = 2 * (ew_precision * ew_recall) / (ew_precision + ew_recall) if (ew_precision + ew_recall) > 0 else 0
@@ -108,11 +136,11 @@ def main():
     print(f"AP@0.5: {equally_weighted_metrics.ap50:.4f}")
     print(f"mAP (approximated): {equally_weighted_metrics.mAP:.4f}")
     print(f"AP@0.75 (approximated): {equally_weighted_metrics.ap75:.4f}")
-    print(f"Precision@{model_config.conf_threshold}: {ew_precision:.4f}")
-    print(f"Recall@{model_config.conf_threshold}: {ew_recall:.4f}")
-    print(f"F1 Score@{model_config.conf_threshold}: {ew_f1:.4f}")
+    print(f"Precision@{optimal_threshold:.3f}: {ew_precision:.4f}")
+    print(f"Recall@{optimal_threshold:.3f}: {ew_recall:.4f}")
+    print(f"F1 Score@{optimal_threshold:.3f}: {ew_f1:.4f}")
 
-    equally_weighted_metrics.save_pr_curve(f"{output_dir['plots']}/equally_weighted_pr_curve.png", mark_thresholds=[model_config.conf_threshold])
+    equally_weighted_metrics.save_pr_curve(f"{output_dir['plots']}/equally_weighted_pr_curve.png", mark_thresholds=[optimal_threshold])
 
   avg_metrics = {
     "mAP": np.mean([m.mAP for m in results.values()]),
