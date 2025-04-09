@@ -59,8 +59,10 @@ class EvaluationMetrics:
     try:
       import matplotlib.pyplot as plt
       import numpy as np
+      from matplotlib.colors import LinearSegmentedColormap
 
       plt.figure(figsize=(10, 8))
+      plt.style.use('seaborn-v0_8-whitegrid')
 
       recalls = self.pr_curve_data["recalls"]
       precisions = self.pr_curve_data["precisions"]
@@ -68,40 +70,81 @@ class EvaluationMetrics:
 
       pr_auc = np.trapz(precisions, recalls)  # noqa: NPY201
 
-      plt.plot(recalls, precisions, 'b-', linewidth=2, label='PR curve')
+      points = np.array([recalls, precisions]).T.reshape(-1, 1, 2)
+      segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
-      if len(thresholds) > 1:
-        points = plt.scatter(recalls[1:], precisions[1:], c=thresholds[1:], cmap='viridis', s=30, alpha=0.7)
-        cbar = plt.colorbar(points)
-        cbar.set_label('Confidence Threshold')
+      cmap = LinearSegmentedColormap.from_list('confidence', ['#ff4500', '#ffa500', '#4682b4', '#2e8b57'])
 
-        if mark_thresholds:
-          for threshold in mark_thresholds:
-            idx = np.abs(np.array(thresholds) - threshold).argmin()
-            plt.plot(recalls[idx], precisions[idx], 'ro', markersize=8)
-            plt.annotate(
-              f"{threshold:.2f}",
-              (recalls[idx], precisions[idx]),
-              xytext=(10, 10),
-              textcoords='offset points',
-              bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8),
-            )
+      from matplotlib.collections import LineCollection
 
-        key_thresholds = [0.25, 0.5, 0.75]
-        for threshold in key_thresholds:
+      norm = plt.Normalize(0, 1.0)
+      lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=3, alpha=0.8)
+
+      lc.set_array(thresholds[1:])
+      line = plt.gca().add_collection(lc)
+
+      cbar = plt.colorbar(line, ax=plt.gca())
+      cbar.set_label('Confidence Threshold', fontsize=10)
+
+      standard_thresholds = [0.1, 0.3, 0.5, 0.7, 0.9]
+
+      cbar.set_ticks(standard_thresholds)
+
+      for conf in standard_thresholds:
+        idx = np.abs(thresholds - conf).argmin()
+        plt.plot(recalls[idx], precisions[idx], 'o', color='black', markersize=6, alpha=0.8, markerfacecolor='white', markeredgewidth=1)
+        plt.annotate(
+          f"{conf:.1f}",
+          xy=(recalls[idx], precisions[idx]),
+          xytext=(5, 5),
+          textcoords='offset points',
+          fontsize=8,
+          color='black',
+          bbox=dict(boxstyle="round,pad=0.1", fc="white", ec="gray", alpha=0.7),
+        )
+
+      if mark_thresholds:
+        for threshold in mark_thresholds:
           idx = np.abs(np.array(thresholds) - threshold).argmin()
-          plt.annotate(f"{threshold:.2f}", (recalls[idx], precisions[idx]), xytext=(5, 5), textcoords='offset points', fontsize=8)
 
-      plt.xlabel('Recall')
-      plt.ylabel('Precision')
-      plt.title(f'Precision-Recall Curve (AUC={pr_auc:.4f})')
+          plt.plot(
+            recalls[idx],
+            precisions[idx],
+            marker='o',
+            markersize=10,
+            color='red',
+            fillstyle='none',
+            markeredgewidth=2,
+            label=f"Operating point ({threshold:.2f})",
+          )
+
+          plt.annotate(
+            f"Conf={threshold:.2f}\nP={precisions[idx]:.2f}, R={recalls[idx]:.2f}",
+            (recalls[idx], precisions[idx]),
+            xytext=(15, 15),
+            textcoords='offset points',
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.9),
+            arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=.2"),
+          )
+
+      plt.xlabel('Recall', fontsize=12)
+      plt.ylabel('Precision', fontsize=12)
+
+      model_name = getattr(self, 'model_name', '')
+      title = 'Precision-Recall Curve'
+      if model_name:
+        title += f' for {model_name}'
+      title += f' (AUC={pr_auc:.4f})'
+      plt.title(title, fontsize=14)
+
       plt.xlim([0, 1])
       plt.ylim([0, 1])
-      plt.grid(True)
+      plt.grid(True, alpha=0.3)
 
-      info_text = f"PR AUC = {pr_auc:.4f}\nAP@0.5 = {self.ap50:.4f}\nAP@0.75 = {self.ap75:.4f}\nmAP = {self.mAP:.4f}"
-      plt.text(0.05, 0.05, info_text, fontsize=10, bbox=dict(facecolor='white', alpha=0.8))
+      info_text = f"mAP = {self.mAP:.4f}\nAP@0.5 = {self.ap50:.4f}\nAP@0.75 = {self.ap75:.4f}"
+      plt.text(0.05, 0.05, info_text, fontsize=11, bbox=dict(facecolor='white', edgecolor='gray', alpha=0.9, boxstyle='round,pad=0.5'))
 
+      plt.tight_layout()
       plt.savefig(output_path, dpi=150, bbox_inches='tight')
       plt.close()
 
@@ -109,22 +152,14 @@ class EvaluationMetrics:
 
     except ImportError:
       print("Matplotlib not available, skipping PR curve visualization")
+    except Exception as e:
+      print(f"Error generating PR curve: {e}")
 
   @classmethod
   def create_combined_from_raw_data(
     cls, all_videos_gt_boxes: list[list[list[BoundingBox]]], all_videos_pred_boxes: list[list[list[Detection]]], iou_thresholds: IoUThresholds | None = None
   ) -> "EvaluationMetrics":
-    """
-    Create a truly combined metrics object by merging all raw predictions and ground truths.
-
-    Args:
-        all_videos_gt_boxes: List of lists of ground truth boxes from all videos
-        all_videos_pred_boxes: List of lists of prediction boxes from all videos
-        iou_thresholds: Optional custom IoU thresholds
-
-    Returns:
-        A new EvaluationMetrics object with metrics calculated on the combined data
-    """
+    """Create a combined metrics object by merging all raw predictions and ground truths."""
     combined_gt_boxes = []
     combined_pred_boxes = []
 
