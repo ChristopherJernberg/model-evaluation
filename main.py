@@ -1,3 +1,4 @@
+import json
 import time
 from pathlib import Path
 
@@ -20,9 +21,18 @@ def main():
     results_dir = Path("results")
     videos_dir = results_dir / "visualizations" / "videos" / model_name
     plots_dir = results_dir / "visualizations" / "plots" / model_name
-    videos_dir.mkdir(parents=True, exist_ok=True)
-    plots_dir.mkdir(parents=True, exist_ok=True)
-    output_dir = {"videos": videos_dir, "plots": plots_dir}
+    metrics_dir = results_dir / "metrics" / model_name
+    reports_dir = results_dir / "reports" / model_name
+
+    for dir_path in [videos_dir, plots_dir, metrics_dir, reports_dir]:
+      dir_path.mkdir(parents=True, exist_ok=True)
+
+    output_dir = {
+      "videos": videos_dir,
+      "plots": plots_dir,
+      "metrics": metrics_dir,
+      "reports": reports_dir,
+    }
   else:
     output_dir = None
 
@@ -36,7 +46,11 @@ def main():
   evaluator = ModelEvaluator(model_config, output_dir=output_dir, visualize=visualize)
 
   # Evaluate all videos in dataset using parallel processing
-  results, combined_metrics = evaluator.evaluate_dataset(Path("data"), num_workers=None)
+  results, combined_metrics = evaluator.evaluate_dataset(Path("data"), num_workers=None, start_time=start_time)
+
+  if output_dir:
+    with open(f"{output_dir['metrics']}/benchmark_results.json") as f:
+      benchmark_data = json.load(f)
 
   print("\nEvaluation Results:")
   print("=" * 50)
@@ -64,24 +78,19 @@ def main():
     print(f"FPS: {metrics.fps:.2f}")
 
   if combined_metrics and output_dir:
-    combined_threshold_idx = np.abs(combined_metrics.pr_curve_data["thresholds"] - model_config.conf_threshold).argmin()
-    combined_precision = combined_metrics.pr_curve_data["precisions"][combined_threshold_idx]
-    combined_recall = combined_metrics.pr_curve_data["recalls"][combined_threshold_idx]
-    combined_f1 = 2 * (combined_precision * combined_recall) / (combined_precision + combined_recall) if (combined_precision + combined_recall) > 0 else 0
+    print("\nCombined Metrics (detection-weighted):")
+    detection_weighted = benchmark_data["summary"]["detection_weighted"]
+    print(f"mAP (IoU=0.5:0.95): {detection_weighted['mAP']:.4f}")
+    print(f"AP@0.5: {detection_weighted['ap50']:.4f}")
+    print(f"AP@0.75: {detection_weighted['ap75']:.4f}")
+    print(f"Precision@{model_config.conf_threshold}: {detection_weighted['precision']:.4f}")
+    print(f"Recall@{model_config.conf_threshold}: {detection_weighted['recall']:.4f}")
+    print(f"F1 Score@{model_config.conf_threshold}: {detection_weighted['f1_score']:.4f}")
 
+    print("\nCombined Counts:")
     combined_tp = sum(m.frame_metrics.true_positives for m in results.values())
     combined_fp = sum(m.frame_metrics.false_positives for m in results.values())
     combined_fn = sum(m.frame_metrics.false_negatives for m in results.values())
-
-    print("\nCombined Metrics (detection-weighted):")
-    print(f"mAP (IoU=0.5:0.95): {combined_metrics.mAP:.4f}")
-    print(f"AP@0.5: {combined_metrics.ap50:.4f}")
-    print(f"AP@0.75: {combined_metrics.ap75:.4f}")
-    print(f"Precision@{model_config.conf_threshold}: {combined_precision:.4f}")
-    print(f"Recall@{model_config.conf_threshold}: {combined_recall:.4f}")
-    print(f"F1 Score@{model_config.conf_threshold}: {combined_f1:.4f}")
-
-    print("\nCombined Counts:")
     print(f"True Positives: {combined_tp}")
     print(f"False Positives: {combined_fp}")
     print(f"False Negatives: {combined_fn}")
@@ -94,14 +103,6 @@ def main():
     ew_precision = equally_weighted_metrics.pr_curve_data["precisions"][ew_threshold_idx]
     ew_recall = equally_weighted_metrics.pr_curve_data["recalls"][ew_threshold_idx]
     ew_f1 = 2 * (ew_precision * ew_recall) / (ew_precision + ew_recall) if (ew_precision + ew_recall) > 0 else 0
-
-    print("\nEqually-Weighted Combined Metrics:")
-    print(f"AP@0.5: {equally_weighted_metrics.ap50:.4f}")
-    print(f"mAP (approximated): {equally_weighted_metrics.mAP:.4f}")
-    print(f"AP@0.75 (approximated): {equally_weighted_metrics.ap75:.4f}")
-    print(f"Precision@{model_config.conf_threshold}: {ew_precision:.4f}")
-    print(f"Recall@{model_config.conf_threshold}: {ew_recall:.4f}")
-    print(f"F1 Score@{model_config.conf_threshold}: {ew_f1:.4f}")
 
     print("\nEqually-Weighted Combined Metrics:")
     print(f"AP@0.5: {equally_weighted_metrics.ap50:.4f}")

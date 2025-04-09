@@ -1,15 +1,18 @@
+import json
 import multiprocessing as mp
 import os
 import time
 from pathlib import Path
 
 import cv2
+import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
 from detection.core.interfaces import Detector, ModelConfig
 from detection.core.registry import ModelRegistry
 from detection.evaluation.metrics import EvaluationMetrics, evaluate_detections, evaluate_with_multiple_iou_thresholds
+from detection.evaluation.report import generate_markdown_report
 from detection.evaluation.visualization import DetectionVisualizer
 
 
@@ -180,7 +183,9 @@ class ModelEvaluator:
     except Exception as e:
       print(f"Error pre-loading model {model_config.name}: {e}")
 
-  def evaluate_dataset(self, data_dir: Path, num_workers: int = None) -> tuple[dict[int, EvaluationMetrics], EvaluationMetrics | None]:
+  def evaluate_dataset(
+    self, data_dir: Path, num_workers: int = None, start_time: float = None
+  ) -> tuple[dict[int, EvaluationMetrics], EvaluationMetrics | None]:
     """Evaluate model performance on all videos in dataset using parallel processing"""
     video_dir = data_dir / "videos"
     gt_dir = data_dir / "gt"
@@ -261,5 +266,122 @@ class ModelEvaluator:
 
     if self.output_dir and results_dict:
       combined_metrics = EvaluationMetrics.create_combined_from_raw_data(all_videos_gt_boxes, all_videos_pred_boxes)
+
+      equally_weighted_metrics = EvaluationMetrics.create_equally_weighted_combined(list(results_dict.values()))
+
+      avg_metrics = {
+        "mAP": np.mean([m.mAP for m in results_dict.values()]),
+        "ap50": np.mean([m.ap50 for m in results_dict.values()]),
+        "ap75": np.mean([m.ap75 for m in results_dict.values()]),
+        "precision": np.mean([m.frame_metrics.precision for m in results_dict.values()]),
+        "recall": np.mean([m.frame_metrics.recall for m in results_dict.values()]),
+        "f1_score": np.mean([m.frame_metrics.f1_score for m in results_dict.values()]),
+        "avg_inference_time": np.mean([m.avg_inference_time for m in results_dict.values()]),
+        "fps": np.mean([m.fps for m in results_dict.values()]),
+        "true_positives": np.mean([m.frame_metrics.true_positives for m in results_dict.values()]),
+        "false_positives": np.mean([m.frame_metrics.false_positives for m in results_dict.values()]),
+        "false_negatives": np.mean([m.frame_metrics.false_negatives for m in results_dict.values()]),
+      }
+
+      combined_counts = {
+        "true_positives": sum(m.frame_metrics.true_positives for m in results_dict.values()),
+        "false_positives": sum(m.frame_metrics.false_positives for m in results_dict.values()),
+        "false_negatives": sum(m.frame_metrics.false_negatives for m in results_dict.values()),
+      }
+
+      combined_threshold_idx = np.abs(combined_metrics.pr_curve_data["thresholds"] - self.model_config.conf_threshold).argmin()
+      combined_precision = combined_metrics.pr_curve_data["precisions"][combined_threshold_idx]
+      combined_recall = combined_metrics.pr_curve_data["recalls"][combined_threshold_idx]
+      combined_f1 = 2 * (combined_precision * combined_recall) / (combined_precision + combined_recall) if (combined_precision + combined_recall) > 0 else 0
+
+      ew_threshold_idx = np.abs(equally_weighted_metrics.pr_curve_data["thresholds"] - self.model_config.conf_threshold).argmin()
+      ew_precision = equally_weighted_metrics.pr_curve_data["precisions"][ew_threshold_idx]
+      ew_recall = equally_weighted_metrics.pr_curve_data["recalls"][ew_threshold_idx]
+      ew_f1 = 2 * (ew_precision * ew_recall) / (ew_precision + ew_recall) if (ew_precision + ew_recall) > 0 else 0
+
+      benchmark_results = {
+        "metadata": {
+          "model_name": self.model_config.name,
+          "conf_threshold": self.model_config.conf_threshold,
+          "iou_threshold": self.model_config.iou_threshold,
+          "device": self.model_config.device,
+          "num_videos": len(results_dict),
+          "test_date": time.strftime("%Y-%m-%d"),
+          "test_timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+          "total_processing_time_seconds": time.perf_counter() - start_time,
+        },
+        "summary": {
+          "arithmetic_mean": {
+            "mAP": avg_metrics["mAP"],
+            "ap50": avg_metrics["ap50"],
+            "ap75": avg_metrics["ap75"],
+            "precision": avg_metrics["precision"],
+            "recall": avg_metrics["recall"],
+            "f1_score": avg_metrics["f1_score"],
+            "fps": avg_metrics["fps"],
+            "inference_time_ms": avg_metrics["avg_inference_time"] * 1000,
+            "true_positives": avg_metrics["true_positives"],
+            "false_positives": avg_metrics["false_positives"],
+            "false_negatives": avg_metrics["false_negatives"],
+          },
+          "detection_weighted": {
+            "mAP": combined_metrics.mAP if combined_metrics else None,
+            "ap50": combined_metrics.ap50 if combined_metrics else None,
+            "ap75": combined_metrics.ap75 if combined_metrics else None,
+            "precision": combined_precision,
+            "recall": combined_recall,
+            "f1_score": combined_f1,
+            "true_positives": combined_counts["true_positives"],
+            "false_positives": combined_counts["false_positives"],
+            "false_negatives": combined_counts["false_negatives"],
+          },
+          "equally_weighted": {
+            "mAP": equally_weighted_metrics.mAP,
+            "ap50": equally_weighted_metrics.ap50,
+            "ap75": equally_weighted_metrics.ap75,
+            "precision": ew_precision,
+            "recall": ew_recall,
+            "f1_score": ew_f1,
+          },
+        },
+        "per_video_results": {},
+      }
+
+      eq_weighted_pr_data = {
+        "precisions": equally_weighted_metrics.pr_curve_data["precisions"].tolist(),
+        "recalls": equally_weighted_metrics.pr_curve_data["recalls"].tolist(),
+        "thresholds": equally_weighted_metrics.pr_curve_data["thresholds"].tolist(),
+      }
+      with open(f"{self.output_dir['metrics']}/equally_weighted_pr_data.json", 'w') as f:
+        json.dump(eq_weighted_pr_data, f)
+
+      for video_id, metrics in results_dict.items():
+        benchmark_results["per_video_results"][str(video_id)] = {
+          "mAP": metrics.mAP,
+          "ap50": metrics.ap50,
+          "ap75": metrics.ap75,
+          "precision": metrics.frame_metrics.precision,
+          "recall": metrics.frame_metrics.recall,
+          "f1_score": metrics.frame_metrics.f1_score,
+          "true_positives": metrics.frame_metrics.true_positives,
+          "false_positives": metrics.frame_metrics.false_positives,
+          "false_negatives": metrics.frame_metrics.false_negatives,
+          "fps": metrics.fps,
+          "inference_time_ms": metrics.avg_inference_time * 1000,
+          "pr_curve_file": f"video_{video_id}_pr_data.json",
+        }
+
+        pr_data = {
+          "precisions": metrics.pr_curve_data["precisions"].tolist(),
+          "recalls": metrics.pr_curve_data["recalls"].tolist(),
+          "thresholds": metrics.pr_curve_data["thresholds"].tolist(),
+        }
+        with open(f"{self.output_dir['metrics']}/video_{video_id}_pr_data.json", 'w') as f:
+          json.dump(pr_data, f)
+
+      with open(f"{self.output_dir['metrics']}/benchmark_results.json", 'w') as f:
+        json.dump(benchmark_results, f, indent=2)
+
+      generate_markdown_report(results_dict, combined_metrics, benchmark_results["metadata"], self.output_dir)
 
     return results_dict, combined_metrics
