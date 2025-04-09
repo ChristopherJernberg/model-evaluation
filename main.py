@@ -15,7 +15,16 @@ def main():
 
   # Define whether to visualize
   visualize = True
-  output_dir = "output/compare" if visualize else None
+
+  if visualize:
+    results_dir = Path("results")
+    videos_dir = results_dir / "visualizations" / "videos" / model_name
+    plots_dir = results_dir / "visualizations" / "plots" / model_name
+    videos_dir.mkdir(parents=True, exist_ok=True)
+    plots_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = {"videos": videos_dir, "plots": plots_dir}
+  else:
+    output_dir = None
 
   model_config = ModelConfig(
     name=model_name,
@@ -43,7 +52,7 @@ def main():
     print(f"F1 Score: {metrics.frame_metrics.f1_score:.4f}")
 
     if output_dir:
-      metrics.save_pr_curve(f"{output_dir}/video_{video_id}_pr_curve.png", mark_thresholds=[model_config.conf_threshold])
+      metrics.save_pr_curve(f"{output_dir['plots']}/video_{video_id}_pr_curve.png", mark_thresholds=[model_config.conf_threshold])
 
     print("\nCounts:")
     print(f"True Positives: {metrics.frame_metrics.true_positives}")
@@ -77,7 +86,7 @@ def main():
     print(f"False Positives: {combined_fp}")
     print(f"False Negatives: {combined_fn}")
 
-    combined_metrics.save_pr_curve(f"{output_dir}/combined_pr_curve.png", mark_thresholds=[model_config.conf_threshold])
+    combined_metrics.save_pr_curve(f"{output_dir['plots']}/combined_pr_curve.png", mark_thresholds=[model_config.conf_threshold])
 
     equally_weighted_metrics = EvaluationMetrics.create_equally_weighted_combined(list(results.values()))
 
@@ -102,7 +111,7 @@ def main():
     print(f"Recall@{model_config.conf_threshold}: {ew_recall:.4f}")
     print(f"F1 Score@{model_config.conf_threshold}: {ew_f1:.4f}")
 
-    equally_weighted_metrics.save_pr_curve(f"{output_dir}/equally_weighted_pr_curve.png", mark_thresholds=[model_config.conf_threshold])
+    equally_weighted_metrics.save_pr_curve(f"{output_dir['plots']}/equally_weighted_pr_curve.png", mark_thresholds=[model_config.conf_threshold])
 
   avg_metrics = {
     "mAP": np.mean([m.mAP for m in results.values()]),

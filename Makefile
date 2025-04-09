@@ -11,7 +11,7 @@ format:
 	ruff format .
 
 clean:
-	rm -rf output/*
+	rm -rf results/*
 
 deep-clean: clean
 	find . -path "*/weights/*" -delete

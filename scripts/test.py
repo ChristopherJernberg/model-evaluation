@@ -9,7 +9,7 @@ if __name__ == "__main__":
 
 from tqdm import tqdm
 
-from detection_models.ultralytics import YOLOPoseModel
+from detection.models.ultralytics import YOLOPoseModel
 
 if __name__ == "__main__":
   from time import perf_counter

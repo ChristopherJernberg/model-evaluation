@@ -144,14 +144,12 @@ class ModelEvaluator:
   def __init__(
     self,
     model_config: ModelConfig,
-    output_dir: Path | None = None,
+    output_dir: dict[str, Path] | None = None,
     visualize: bool = False,
   ):
     self.model_config = model_config
-    self.output_dir = Path(output_dir) if output_dir else None
+    self.output_dir = output_dir
     self.visualize = visualize
-    if self.output_dir and self.visualize:
-      self.output_dir.mkdir(parents=True, exist_ok=True)
 
   def evaluate_video(self, video_path: Path, gt_path: Path) -> EvaluationMetrics:
     """Evaluate model performance on a single video"""
@@ -164,7 +162,7 @@ class ModelEvaluator:
 
     output_path = None
     if self.output_dir and self.visualize:
-      output_path = self.output_dir / f"{video_path.stem}_comparison.mp4"
+      output_path = self.output_dir["videos"] / f"{video_path.stem}.mp4"
 
     return process_video(
       str(video_path),
@@ -188,7 +186,7 @@ class ModelEvaluator:
     gt_dir = data_dir / "gt"
 
     if self.visualize:
-      print(f"\nVisualization enabled. Comparison videos will be saved to: {self.output_dir}")
+      print(f"\nVisualization enabled. Comparison videos will be saved to: {self.output_dir['videos']}")
 
     self.load_model(self.model_config)
 
@@ -199,7 +197,7 @@ class ModelEvaluator:
       gt_path = gt_dir / f"{i}.csv"
       if video_path.exists() and gt_path.exists():
         videos.append(video_path)
-        output_path = str(self.output_dir / f"{i}_comparison.mp4") if self.output_dir and self.visualize else None
+        output_path = str(self.output_dir["videos"] / f"{i}.mp4") if self.output_dir and self.visualize else None
         process_args.append(
           (
             str(video_path),

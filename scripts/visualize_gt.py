@@ -92,7 +92,7 @@ def process_video(args):
 def main():
   gt_dir = "data/gt"
   video_dir = "data/videos"
-  output_dir = "output/gt"
+  output_dir = "results/gt"
 
   os.makedirs(output_dir, exist_ok=True)
 
