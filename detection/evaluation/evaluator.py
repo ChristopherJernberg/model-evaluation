@@ -164,11 +164,15 @@ class ModelEvaluator:
     self,
     model_config: ModelConfig,
     output_dir: dict[str, Path] | None = None,
-    visualize: bool = False,
+    enable_visualization: bool = False,
+    save_metrics: bool = True,
+    save_reports: bool = True,
   ):
     self.model_config = model_config
     self.output_dir = output_dir
-    self.visualize = visualize
+    self.enable_visualization = enable_visualization
+    self.save_metrics = save_metrics
+    self.save_reports = save_reports
 
   def evaluate_video(self, video_path: Path, gt_path: Path) -> EvaluationMetrics:
     """Evaluate model performance on a single video"""
@@ -180,7 +184,7 @@ class ModelEvaluator:
     model = ModelRegistry.create_from_config(self.model_config)
 
     output_path = None
-    if self.output_dir and self.visualize:
+    if self.output_dir and self.enable_visualization:
       output_path = self.output_dir["videos"] / f"{video_path.stem}.mp4"
 
     result = process_video(
@@ -188,7 +192,7 @@ class ModelEvaluator:
       str(gt_path),
       model,
       str(output_path) if output_path else None,
-      visualize=self.visualize,
+      visualize=self.enable_visualization,
     )
     return result if isinstance(result, EvaluationMetrics) else result[0]
 
@@ -212,7 +216,7 @@ class ModelEvaluator:
     if not gt_dir.exists():
       raise FileNotFoundError(f"Ground truth directory not found: {gt_dir}")
 
-    if self.visualize:
+    if self.enable_visualization:
       output_dir_videos = self.output_dir.get("videos") if self.output_dir is not None else None
       if output_dir_videos is not None:
         print(f"\nVisualization enabled. Comparison videos will be saved to: {output_dir_videos}")
@@ -231,7 +235,7 @@ class ModelEvaluator:
       if gt_path.exists():
         videos.append(video_path)
         output_path = None
-        if self.output_dir is not None and "videos" in self.output_dir and self.visualize:
+        if self.output_dir is not None and "videos" in self.output_dir and self.enable_visualization:
           output_path = str(self.output_dir["videos"] / f"{video_name}.mp4")
 
         process_args.append(
@@ -240,7 +244,7 @@ class ModelEvaluator:
             str(gt_path),
             self.model_config,
             output_path,
-            self.visualize,
+            self.enable_visualization,
             idx,
           )
         )
@@ -416,6 +420,7 @@ class ModelEvaluator:
               "pr_curve_file": f"video_{video_id}_pr_data.json",
             }
 
+        if self.save_metrics and self.output_dir and "metrics" in self.output_dir:
           pr_data = {
             "precisions": metrics.pr_curve_data["precisions"].tolist(),
             "recalls": metrics.pr_curve_data["recalls"].tolist(),
@@ -424,17 +429,18 @@ class ModelEvaluator:
           with open(f"{self.output_dir['metrics']}/video_{video_id}_pr_data.json", 'w') as f:
             json.dump(pr_data, f)
 
-      with open(f"{self.output_dir['metrics']}/benchmark_results.json", 'w') as f:
-        json.dump(benchmark_results, f, indent=2)
-
-      generate_markdown_report(results_dict, combined_metrics, benchmark_results["metadata"], self.output_dir)
+      if self.save_metrics and self.output_dir and "metrics" in self.output_dir:
+        with open(f"{self.output_dir['metrics']}/benchmark_results.json", 'w') as f:
+          json.dump(benchmark_results, f, indent=2)
+      if self.save_reports and self.output_dir and "reports" in self.output_dir:
+        generate_markdown_report(results_dict, combined_metrics, benchmark_results["metadata"], self.output_dir)
 
     return results_dict, combined_metrics
 
   def benchmark_speed_at_thresholds(self, video_path: str, thresholds: list[float] | None = None, num_frames: int = 75) -> SpeedVsThresholdData:
     """Benchmark model speed at different confidence thresholds"""
     if thresholds is None:
-      thresholds = [0, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9]
+      thresholds = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
     model = ModelRegistry.create_from_config(self.model_config)
 
@@ -462,17 +468,15 @@ class ModelEvaluator:
       original_conf = model.conf_threshold
       model.conf_threshold = 0.25
 
-    print("Warming up model...")
     for _ in range(15):
       _ = model.predict(frames[0])
 
     speed_data = SpeedVsThresholdData()
+    speed_data.device = self.model_config.device
 
     for threshold in thresholds:
       if hasattr(model, 'conf_threshold'):
         model.conf_threshold = threshold
-
-      print(f"Testing threshold {threshold:.2f}...")
 
       times = []
       for frame in frames:
@@ -482,17 +486,14 @@ class ModelEvaluator:
         times.append(end_time - start_time)
 
       avg_time = float(np.mean(times))
-      min_time = float(np.min(times))
-      max_time = float(np.max(times))
-      std_time = float(np.std(times))
+      # min_time = float(np.min(times))
+      # max_time = float(np.max(times))
+      # std_time = float(np.std(times))
       fps = float(1.0 / avg_time) if avg_time > 0 else 0.0
 
       speed_data.thresholds.append(float(threshold))
       speed_data.inference_times.append(float(avg_time))
       speed_data.fps_values.append(float(fps))
-
-      print(f"  Threshold {threshold:.2f}: {avg_time * 1000:.1f}ms ±{std_time * 1000:.1f}ms (min: {min_time * 1000:.1f}ms, max: {max_time * 1000:.1f}ms)")
-      print(f"  FPS: {fps:.1f}")
 
     if hasattr(model, 'conf_threshold'):
       model.conf_threshold = original_conf

@@ -10,6 +10,10 @@ import markdown
 
 def generate_markdown_report(results, combined_metrics, metadata, output_dir):
   """Generate a markdown report summarizing benchmark results."""
+  if "reports" not in output_dir or output_dir["reports"] is None:
+    print("Warning: Reports directory not specified, skipping report generation")
+    return
+
   report_path = output_dir["reports"] / "benchmark_report.md"
   report_path.parent.mkdir(parents=True, exist_ok=True)
 

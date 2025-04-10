@@ -45,6 +45,7 @@ class SpeedVsThresholdData:
   thresholds: list[float] = field(default_factory=list)
   inference_times: list[float] = field(default_factory=list)  # in seconds
   fps_values: list[float] = field(default_factory=list)
+  device: str | None = None
 
 
 @dataclass
@@ -282,8 +283,11 @@ class EvaluationMetrics:
 
   @classmethod
   def create_combined_from_raw_data(
-    cls, all_videos_gt_boxes: list[list[list[BoundingBox]]], all_videos_pred_boxes: list[list[list[Detection]]], 
-    iou_thresholds: IoUThresholds | None = None, model_name: str = ""
+    cls,
+    all_videos_gt_boxes: list[list[list[BoundingBox]]],
+    all_videos_pred_boxes: list[list[list[Detection]]],
+    iou_thresholds: IoUThresholds | None = None,
+    model_name: str = "",
   ) -> "EvaluationMetrics":
     """Create a combined metrics object by merging all raw predictions and ground truths."""
     combined_gt_boxes = []
@@ -295,7 +299,7 @@ class EvaluationMetrics:
 
     combined_metrics = evaluate_with_multiple_iou_thresholds(combined_gt_boxes, combined_pred_boxes, iou_thresholds)
     combined_metrics.model_name = model_name
-    
+
     return combined_metrics
 
   @classmethod
@@ -416,10 +420,11 @@ class EvaluationMetrics:
 
       plt.xlabel('Confidence Threshold', fontsize=12, fontweight='bold')
       plt.ylabel('Speed (FPS)', fontsize=12, fontweight='bold')
-      
+
       title = 'Speed vs Threshold'
+      device_info = f" ({self.speed_vs_threshold.device})" if self.speed_vs_threshold.device else ""
       if self.model_name:
-        title += f' - {self.model_name}'
+        title += f' - {self.model_name}{device_info}'
       plt.title(title, fontsize=14, fontweight='bold')
 
       if optimal_threshold > 0:
