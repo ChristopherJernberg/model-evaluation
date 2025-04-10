@@ -46,6 +46,6 @@ dmypy.json
 # Ruff
 .ruff_cache/
 
-data/
+testdata/
 results/
 *.mp4
