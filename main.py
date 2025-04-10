@@ -11,7 +11,9 @@ from detection.evaluation import ModelEvaluator
 from detection.evaluation.metrics import EvaluationMetrics
 
 
-def evaluate_model(model_name, dataset_name, visualize=True, start_time=None):
+def evaluate_model(
+  model_name: str, dataset_name: str, visualize: bool = True, start_time: float | None = None, device: str = "mps", iou_threshold: float = 0.45
+) -> dict[str, object]:
   """Evaluate a single model on the specified dataset"""
   print(f"\n{'=' * 50}")
   print(f"Evaluating model: {model_name}")
@@ -39,9 +41,9 @@ def evaluate_model(model_name, dataset_name, visualize=True, start_time=None):
   # Set initial conf_threshold to 0 to evaluate and find optimal threshold across all thresholds
   model_config = ModelConfig(
     name=model_name,
-    device="mps",  # "mps", "cuda", or "cpu"
+    device=device,
     conf_threshold=0,
-    iou_threshold=0.45,
+    iou_threshold=iou_threshold,
   )
 
   evaluator = ModelEvaluator(model_config, output_dir=output_dir, visualize=visualize)
@@ -53,6 +55,7 @@ def evaluate_model(model_name, dataset_name, visualize=True, start_time=None):
   optimal_f1 = 0.0
 
   if combined_metrics:
+    combined_metrics.model_name = model_name
     optimal_threshold, optimal_f1 = combined_metrics.find_optimal_threshold(metric="f1")
 
     print(f"\nOptimal threshold based on F1 score: {optimal_threshold:.3f} (F1: {optimal_f1:.3f})")
@@ -191,10 +194,10 @@ def evaluate_model(model_name, dataset_name, visualize=True, start_time=None):
 
       if combined_metrics:
         combined_metrics.speed_vs_threshold = speed_data
-        combined_metrics.optimal_threshold = optimal_threshold
+        combined_metrics.optimal_threshold = float(optimal_threshold)
 
         if output_dir:
-          combined_metrics.plot_speed_vs_threshold(f"{output_dir['plots']}/speed_vs_threshold.png")
+          combined_metrics.plot_speed_vs_threshold(f"{output_dir['plots']}/speed_vs_threshold.png", optimal_threshold=float(optimal_threshold))
 
         idx = np.abs(np.array(speed_data.thresholds) - optimal_threshold).argmin()
         if idx < len(speed_data.thresholds):
@@ -208,12 +211,14 @@ def evaluate_model(model_name, dataset_name, visualize=True, start_time=None):
   return {
     "model_name": model_name,
     "categories": categories,
-    "mAP": avg_metrics["mAP"],
-    "ap50": avg_metrics["ap50"],
-    "optimal_threshold": optimal_threshold,
-    "optimal_f1": optimal_f1,
-    "fps": avg_metrics["fps"],
-    "inference_time_ms": avg_metrics["avg_inference_time"] * 1000,
+    "mAP": float(avg_metrics["mAP"]),
+    "ap50": float(avg_metrics["ap50"]),
+    "optimal_threshold": float(optimal_threshold),
+    "optimal_f1": float(optimal_f1),
+    "fps": float(avg_metrics["fps"]),
+    "inference_time_ms": float(avg_metrics["avg_inference_time"] * 1000),
+    "device": device,
+    "iou_threshold": float(iou_threshold),
   }
 
 
@@ -232,6 +237,8 @@ def main():
 
   parser.add_argument("--dataset", "-d", default="evanette001", help="Dataset name to use for evaluation")
   parser.add_argument("--no-visualize", action="store_true", help="Disable visualization")
+  parser.add_argument("--device", "-dv", default="mps", choices=["mps", "cuda", "cpu"], help="Device to run inference on (mps, cuda, cpu)")
+  parser.add_argument("--iou", type=float, default=0.45, help="IoU threshold for evaluation")
 
   args = parser.parse_args()
 
@@ -293,11 +300,17 @@ def main():
   dataset_name = args.dataset
   visualize = not args.no_visualize
 
+  print("\nEvaluation configuration:")
+  print(f"  Device: {args.device}")
+  print(f"  IoU threshold: {args.iou}")
+  print(f"  Dataset: {dataset_name}")
+  print(f"  Visualization: {'Disabled' if args.no_visualize else 'Enabled'}")
+
   results = []
 
   for model_name in models_to_evaluate:
     try:
-      model_result = evaluate_model(model_name, dataset_name, visualize, start_time)
+      model_result = evaluate_model(model_name, dataset_name, visualize, start_time, device=args.device, iou_threshold=args.iou)
       results.append(model_result)
     except Exception as e:
       print(f"Error evaluating model {model_name}: {e}")
@@ -313,7 +326,11 @@ def main():
   print("MODELS COMPARISON (sorted by optimal F1 score)")
   print("=" * 120)
 
-  print("\n{:<15} {:<8} {:<8} {:<8} {:<10} {:<8} {:<12} {:<30}".format("Model", "F1 Score", "mAP", "AP@0.5", "Opt Thresh", "FPS", "Infer Time", "Categories"))
+  print(
+    "\n{:<15} {:<8} {:<8} {:<8} {:<10} {:<8} {:<12} {:<6} {:<6} {:<30}".format(
+      "Model", "F1 Score", "mAP", "AP@0.5", "Opt Thresh", "FPS", "Infer Time", "Device", "IoU", "Categories"
+    )
+  )
   print("-" * 120)
 
   for result in results:
@@ -322,7 +339,7 @@ def main():
       categories_str = categories_str[:27] + "..."
 
     print(
-      "{:<15} {:<8.3f} {:<8.4f} {:<8.4f} {:<10.3f} {:<8.1f} {:<12.2f}ms {:<30}".format(
+      "{:<15} {:<8.3f} {:<8.4f} {:<8.4f} {:<10.3f} {:<8.1f} {:<12.2f}ms {:<6} {:<6.2f} {:<30}".format(
         result["model_name"],
         result["optimal_f1"],
         result["mAP"],
@@ -330,6 +347,8 @@ def main():
         result["optimal_threshold"],
         result["fps"],
         result["inference_time_ms"],
+        result["device"],
+        result["iou_threshold"],
         categories_str,
       )
     )

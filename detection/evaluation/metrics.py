@@ -66,6 +66,9 @@ class EvaluationMetrics:
 
   speed_vs_threshold: SpeedVsThresholdData = field(default_factory=SpeedVsThresholdData)
 
+  optimal_threshold: float = 0.0
+  model_name: str = ""
+
   def save_pr_curve(self, output_path: str = "pr_curve.png", mark_thresholds: list[float] | None = None) -> None:
     try:
       import matplotlib.pyplot as plt
@@ -78,7 +81,6 @@ class EvaluationMetrics:
       precisions = self.pr_curve_data["precisions"]
       thresholds = self.pr_curve_data["thresholds"]
 
-      pr_auc = np.trapz(precisions, recalls)  # noqa: NPY201
       main_color = '#1f77b4'
       curve_points = list(zip(recalls, precisions))
 
@@ -252,11 +254,9 @@ class EvaluationMetrics:
       plt.xlabel('Recall', fontsize=12, fontweight='bold')
       plt.ylabel('Precision', fontsize=12, fontweight='bold')
 
-      model_name = getattr(self, 'model_name', '')
-      title = 'Precision-Recall Curve'
-      if model_name:
-        title += f' for {model_name}'
-      title += f' (AUC={pr_auc:.4f})'
+      title = 'PR Curve'
+      if self.model_name:
+        title += f' - {self.model_name}'
       plt.title(title, fontsize=14, fontweight='bold')
 
       plt.xlim([0, 1])
@@ -266,7 +266,7 @@ class EvaluationMetrics:
       plt.gca().spines['right'].set_visible(False)
       plt.gca().spines['top'].set_visible(False)
 
-      info_text = f"mAP = {self.mAP:.4f}\nAP@0.5 = {self.ap50:.4f}\nAP@0.75 = {self.ap75:.4f}"
+      info_text = f"AP@0.5 = {self.ap50:.4f}\nAP@0.75 = {self.ap75:.4f}\nmAP = {self.mAP:.4f}"
       plt.text(0.05, 0.05, info_text, fontsize=10, bbox=dict(facecolor='white', edgecolor='gray', alpha=0.9, boxstyle='round,pad=0.5'))
 
       plt.tight_layout()
@@ -282,7 +282,8 @@ class EvaluationMetrics:
 
   @classmethod
   def create_combined_from_raw_data(
-    cls, all_videos_gt_boxes: list[list[list[BoundingBox]]], all_videos_pred_boxes: list[list[list[Detection]]], iou_thresholds: IoUThresholds | None = None
+    cls, all_videos_gt_boxes: list[list[list[BoundingBox]]], all_videos_pred_boxes: list[list[list[Detection]]], 
+    iou_thresholds: IoUThresholds | None = None, model_name: str = ""
   ) -> "EvaluationMetrics":
     """Create a combined metrics object by merging all raw predictions and ground truths."""
     combined_gt_boxes = []
@@ -293,7 +294,8 @@ class EvaluationMetrics:
       combined_pred_boxes.extend(video_pred_boxes)
 
     combined_metrics = evaluate_with_multiple_iou_thresholds(combined_gt_boxes, combined_pred_boxes, iou_thresholds)
-
+    combined_metrics.model_name = model_name
+    
     return combined_metrics
 
   @classmethod
@@ -369,6 +371,9 @@ class EvaluationMetrics:
     combined.mAP = combined.ap50
     combined.ap75 = combined.ap50
 
+    if metrics_list and hasattr(metrics_list[0], 'model_name'):
+      combined.model_name = metrics_list[0].model_name
+
     return combined
 
   def find_optimal_threshold(self, metric: str = "f1") -> tuple[float, float]:
@@ -397,7 +402,7 @@ class EvaluationMetrics:
       best_idx = np.argmax(f1_scores)
       return thresholds[best_idx], f1_scores[best_idx]
 
-  def plot_speed_vs_threshold(self, output_path: str = "speed_vs_threshold.png") -> None:
+  def plot_speed_vs_threshold(self, output_path: str = "speed_vs_threshold.png", optimal_threshold: float = 0.0) -> None:
     """Plot speed (FPS) vs confidence threshold"""
     try:
       import matplotlib.pyplot as plt
@@ -411,10 +416,14 @@ class EvaluationMetrics:
 
       plt.xlabel('Confidence Threshold', fontsize=12, fontweight='bold')
       plt.ylabel('Speed (FPS)', fontsize=12, fontweight='bold')
-      plt.title('Inference Speed vs Confidence Threshold', fontsize=14, fontweight='bold')
+      
+      title = 'Speed vs Threshold'
+      if self.model_name:
+        title += f' - {self.model_name}'
+      plt.title(title, fontsize=14, fontweight='bold')
 
-      if hasattr(self, 'optimal_threshold') and self.optimal_threshold > 0:
-        idx = np.abs(np.array(self.speed_vs_threshold.thresholds) - self.optimal_threshold).argmin()
+      if optimal_threshold > 0:
+        idx = np.abs(np.array(self.speed_vs_threshold.thresholds) - optimal_threshold).argmin()
         if idx < len(self.speed_vs_threshold.thresholds):
           x = self.speed_vs_threshold.thresholds[idx]
           y = self.speed_vs_threshold.fps_values[idx]
@@ -451,9 +460,8 @@ class EvaluationMetrics:
       plt.gca().spines['right'].set_visible(False)
       plt.gca().spines['top'].set_visible(False)
 
-      if hasattr(self, 'optimal_threshold'):
-        y_max = max(self.speed_vs_threshold.fps_values) * 1.25
-        plt.ylim(0, y_max)
+      y_max = max(self.speed_vs_threshold.fps_values) * 1.25
+      plt.ylim(0, y_max)
 
       plt.tight_layout()
       plt.savefig(output_path, dpi=150, bbox_inches='tight')

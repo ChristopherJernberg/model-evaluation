@@ -294,12 +294,14 @@ class ModelEvaluator:
     for i, result in enumerate(results_with_data):
       if result is not None and isinstance(result, tuple) and len(result) == 2:
         metrics, (gt_boxes, pred_boxes) = result
+        metrics.model_name = self.model_config.name
         results_dict[i + 1] = metrics
         all_videos_gt_boxes.append(gt_boxes)
         all_videos_pred_boxes.append(pred_boxes)
 
     if self.output_dir and results_dict:
       combined_metrics = EvaluationMetrics.create_combined_from_raw_data(all_videos_gt_boxes, all_videos_pred_boxes)
+      combined_metrics.model_name = self.model_config.name
 
       equally_weighted_metrics = EvaluationMetrics.create_equally_weighted_combined(list(results_dict.values()))
 
