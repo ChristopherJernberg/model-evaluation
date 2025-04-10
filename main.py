@@ -220,7 +220,10 @@ def evaluate_model(model_name, dataset_name, visualize=True, start_time=None):
 def main():
   parser = argparse.ArgumentParser(description="Evaluate models by category or specific models")
   group = parser.add_mutually_exclusive_group(required=True)
-  group.add_argument("--category", "-c", help="Category of models to evaluate")
+
+  group.add_argument("--categories", "-c", nargs="+", help="Categories of models to evaluate (models matching ANY of the specified categories)")
+  group.add_argument("--all-categories", "-ac", nargs="+", help="Categories of models to evaluate (models matching ALL of the specified categories)")
+
   group.add_argument("--models", "-m", nargs="+", help="Specific model names to evaluate")
   group.add_argument("--all", "-a", action="store_true", help="Evaluate all available models")
   group.add_argument("--list-categories", "-lc", action="store_true", help="List all available categories")
@@ -261,8 +264,21 @@ def main():
 
   if args.all:
     models_to_evaluate = ModelRegistry.list_supported_models()
-  elif args.category:
-    models_to_evaluate = ModelRegistry.list_models_by_category(args.category)
+  elif args.categories:
+    # Get models that match ANY of the specified categories
+    models_to_evaluate = set()
+    for category in args.categories:
+      models_to_evaluate.update(ModelRegistry.list_models_by_category(category))
+    models_to_evaluate = sorted(models_to_evaluate)
+  elif args.all_categories:
+    # Get models that match ALL of the specified categories
+    all_models = ModelRegistry.list_supported_models()
+    models_to_evaluate = []
+
+    for model in all_models:
+      model_categories = set(ModelRegistry.get_model_categories(model))
+      if all(category in model_categories for category in args.all_categories):
+        models_to_evaluate.append(model)
   else:
     models_to_evaluate = args.models
 
@@ -270,7 +286,9 @@ def main():
     print("No models found for evaluation.")
     return
 
-  print(f"Models to evaluate: {', '.join(models_to_evaluate)}")
+  print("Models to evaluate:")
+  for model in models_to_evaluate:
+    print(f"  - {model}")
 
   dataset_name = args.dataset
   visualize = not args.no_visualize

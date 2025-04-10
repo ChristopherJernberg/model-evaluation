@@ -148,13 +148,13 @@ class YOLOSegModel(YOLOModel):
     # YOLOv8 segmentation models
     "yolov8n-seg": {"path": "yolov8n-seg.pt", "categories": ["v8", "seg", "real-time"]},
     "yolov8s-seg": {"path": "yolov8s-seg.pt", "categories": ["v8", "seg", "real-time"]},
-    "yolov8m-seg": {"path": "yolov8m-seg.pt", "categories": ["v8", "seg", "real-time"]},
+    "yolov8m-seg": {"path": "yolov8m-seg.pt", "categories": ["v8", "seg"]},
     "yolov8l-seg": {"path": "yolov8l-seg.pt", "categories": ["v8", "seg"]},
     "yolov8x-seg": {"path": "yolov8x-seg.pt", "categories": ["v8", "seg"]},
     # Newer YOLO segmentation models
     "yolo11n-seg": {"path": "yolo11n-seg.pt", "categories": ["v11", "seg", "real-time"]},
     "yolo11s-seg": {"path": "yolo11s-seg.pt", "categories": ["v11", "seg", "real-time"]},
-    "yolo11m-seg": {"path": "yolo11m-seg.pt", "categories": ["v11", "seg", "real-time"]},
+    "yolo11m-seg": {"path": "yolo11m-seg.pt", "categories": ["v11", "seg"]},
     "yolo11l-seg": {"path": "yolo11l-seg.pt", "categories": ["v11", "seg"]},
     "yolo11x-seg": {"path": "yolo11x-seg.pt", "categories": ["v11", "seg"]},
   }
