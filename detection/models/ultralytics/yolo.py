@@ -29,11 +29,11 @@ class YOLOModel(UltralyticsModel):
     "yolov5l6u": {"path": "yolov5l6u.pt", "categories": ["v5", "large"]},
     "yolov5x6u": {"path": "yolov5x6u.pt", "categories": ["v5", "xlarge"]},
     # YOLOv6
-    "yolov6n": {"path": "yolov6n.pt", "categories": ["v6", "nano", "real-time"]},
-    "yolov6s": {"path": "yolov6s.pt", "categories": ["v6", "small", "real-time"]},
-    "yolov6m": {"path": "yolov6m.pt", "categories": ["v6", "medium", "real-time"]},
-    "yolov6l": {"path": "yolov6l.pt", "categories": ["v6", "large"]},
-    "yolov6x": {"path": "yolov6x.pt", "categories": ["v6", "xlarge"]},
+    # "yolov6n": {"path": "yolov6n.pt", "categories": ["v6", "nano", "real-time"]},
+    # "yolov6s": {"path": "yolov6s.pt", "categories": ["v6", "small", "real-time"]},
+    # "yolov6m": {"path": "yolov6m.pt", "categories": ["v6", "medium", "real-time"]},
+    # "yolov6l": {"path": "yolov6l.pt", "categories": ["v6", "large"]},
+    # "yolov6x": {"path": "yolov6x.pt", "categories": ["v6", "xlarge"]},
     # YOLOv8
     "yolov8n": {"path": "yolov8n.pt", "categories": ["v8", "nano", "real-time"]},
     "yolov8s": {"path": "yolov8s.pt", "categories": ["v8", "small", "real-time"]},

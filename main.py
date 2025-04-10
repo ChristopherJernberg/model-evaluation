@@ -1,3 +1,4 @@
+import argparse
 import json
 import time
 from pathlib import Path
@@ -5,6 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from detection.core.interfaces import ModelConfig
+from detection.core.registry import ModelRegistry
 from detection.evaluation import ModelEvaluator
 from detection.evaluation.metrics import EvaluationMetrics
 
@@ -63,8 +65,12 @@ def evaluate_model(model_name, dataset_name, visualize=True, start_time=None):
     model_config.conf_threshold = optimal_threshold
 
   if output_dir:
-    with open(f"{output_dir['metrics']}/benchmark_results.json") as f:
-      benchmark_data = json.load(f)
+    try:
+      with open(f"{output_dir['metrics']}/benchmark_results.json") as f:
+        benchmark_data = json.load(f)
+    except FileNotFoundError:
+      print(f"Warning: Benchmark results file not found at {output_dir['metrics']}/benchmark_results.json")
+      benchmark_data = {"summary": {"detection_weighted": {}}}
 
   print("\nEvaluation Results:")
   print("=" * 50)
@@ -97,12 +103,15 @@ def evaluate_model(model_name, dataset_name, visualize=True, start_time=None):
     print(f"Avg Inference Time: {metrics.avg_inference_time * 1000:.2f} ms")
     print(f"FPS: {metrics.fps:.2f}")
 
-  if combined_metrics and output_dir:
+  if combined_metrics and output_dir and "detection_weighted" in benchmark_data["summary"]:
     print("\nCombined Metrics (detection-weighted):")
     detection_weighted = benchmark_data["summary"]["detection_weighted"]
-    print(f"mAP (IoU=0.5:0.95): {detection_weighted['mAP']:.4f}")
-    print(f"AP@0.5: {detection_weighted['ap50']:.4f}")
-    print(f"AP@0.75: {detection_weighted['ap75']:.4f}")
+    if "mAP" in detection_weighted:
+      print(f"mAP (IoU=0.5:0.95): {detection_weighted['mAP']:.4f}")
+    if "ap50" in detection_weighted:
+      print(f"AP@0.5: {detection_weighted['ap50']:.4f}")
+    if "ap75" in detection_weighted:
+      print(f"AP@0.75: {detection_weighted['ap75']:.4f}")
 
     threshold_idx = np.abs(combined_metrics.pr_curve_data["thresholds"] - optimal_threshold).argmin()
     comb_precision = combined_metrics.pr_curve_data["precisions"][threshold_idx]
@@ -194,8 +203,11 @@ def evaluate_model(model_name, dataset_name, visualize=True, start_time=None):
     else:
       print("No video files found for benchmarking speed")
 
+  categories = ModelRegistry.get_model_categories(model_name)
+
   return {
     "model_name": model_name,
+    "categories": categories,
     "mAP": avg_metrics["mAP"],
     "ap50": avg_metrics["ap50"],
     "optimal_threshold": optimal_threshold,
@@ -206,33 +218,101 @@ def evaluate_model(model_name, dataset_name, visualize=True, start_time=None):
 
 
 def main():
+  parser = argparse.ArgumentParser(description="Evaluate models by category or specific models")
+  group = parser.add_mutually_exclusive_group(required=True)
+  group.add_argument("--category", "-c", help="Category of models to evaluate")
+  group.add_argument("--models", "-m", nargs="+", help="Specific model names to evaluate")
+  group.add_argument("--all", "-a", action="store_true", help="Evaluate all available models")
+  group.add_argument("--list-categories", "-lc", action="store_true", help="List all available categories")
+  group.add_argument("--list-models", "-lm", action="store_true", help="List all available models")
+  group.add_argument("--list-models-in-category", "-lmc", help="List all models in a specific category")
+
+  parser.add_argument("--dataset", "-d", default="evanette001", help="Dataset name to use for evaluation")
+  parser.add_argument("--no-visualize", action="store_true", help="Disable visualization")
+
+  args = parser.parse_args()
+
+  ModelRegistry._discover_models()
+
   start_time = time.perf_counter()
 
-  # List of models to evaluate
-  models = ["rtdetrv2-r18vd", "rtdetrv2-r34vd", "rtdetrv2-r50vd", "yolov8m-pose", "yolov8m", "yolo11m-pose", "yolo12m", "yolo11n-seg"]
+  if args.list_categories:
+    categories = ModelRegistry.list_categories()
+    print("\nAvailable categories:")
+    for category in categories:
+      print(f"  - {category}")
+    return
 
-  dataset_name = "evanette001"
-  visualize = True
+  if args.list_models:
+    models = ModelRegistry.list_supported_models()
+    print("\nAvailable models:")
+    for model in models:
+      categories = ModelRegistry.get_model_categories(model)
+      print(f"  - {model} (Categories: {', '.join(categories)})")
+    return
+
+  if args.list_models_in_category:
+    models = ModelRegistry.list_models_by_category(args.list_models_in_category)
+    print(f"\nModels in category '{args.list_models_in_category}':")
+    for model in models:
+      all_categories = ModelRegistry.get_model_categories(model)
+      print(f"  - {model} (All categories: {', '.join(all_categories)})")
+    return
+
+  if args.all:
+    models_to_evaluate = ModelRegistry.list_supported_models()
+  elif args.category:
+    models_to_evaluate = ModelRegistry.list_models_by_category(args.category)
+  else:
+    models_to_evaluate = args.models
+
+  if not models_to_evaluate:
+    print("No models found for evaluation.")
+    return
+
+  print(f"Models to evaluate: {', '.join(models_to_evaluate)}")
+
+  dataset_name = args.dataset
+  visualize = not args.no_visualize
 
   results = []
 
-  for model_name in models:
-    model_result = evaluate_model(model_name, dataset_name, visualize, start_time)
-    results.append(model_result)
+  for model_name in models_to_evaluate:
+    try:
+      model_result = evaluate_model(model_name, dataset_name, visualize, start_time)
+      results.append(model_result)
+    except Exception as e:
+      print(f"Error evaluating model {model_name}: {e}")
+      continue
+
+  if not results:
+    print("No evaluation results to display.")
+    return
 
   results.sort(key=lambda x: x["optimal_f1"], reverse=True)
 
-  print("\n\n" + "=" * 80)
+  print("\n\n" + "=" * 120)
   print("MODELS COMPARISON (sorted by optimal F1 score)")
-  print("=" * 80)
+  print("=" * 120)
 
-  print("\n{:<15} {:<8} {:<8} {:<8} {:<10} {:<8} {:<12}".format("Model", "F1 Score", "mAP", "AP@0.5", "Opt Thresh", "FPS", "Infer Time"))
-  print("-" * 80)
+  print("\n{:<15} {:<8} {:<8} {:<8} {:<10} {:<8} {:<12} {:<30}".format("Model", "F1 Score", "mAP", "AP@0.5", "Opt Thresh", "FPS", "Infer Time", "Categories"))
+  print("-" * 120)
 
   for result in results:
+    categories_str = ", ".join(result["categories"])
+    if len(categories_str) > 30:
+      categories_str = categories_str[:27] + "..."
+
     print(
-      "{:<15} {:<8.3f} {:<8.4f} {:<8.4f} {:<10.3f} {:<8.1f} {:<12.2f}ms".format(
-        result["model_name"], result["optimal_f1"], result["mAP"], result["ap50"], result["optimal_threshold"], result["fps"], result["inference_time_ms"]
+      "{:<15} {:<8.3f} {:<8.4f} {:<8.4f} {:<10.3f} {:<8.1f} {:<12.2f}ms {:<30}".format(
+        result["model_name"],
+        result["optimal_f1"],
+        result["mAP"],
+        result["ap50"],
+        result["optimal_threshold"],
+        result["fps"],
+        result["inference_time_ms"],
+        categories_str,
       )
     )
 
