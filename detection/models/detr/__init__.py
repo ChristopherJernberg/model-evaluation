@@ -1,3 +1,3 @@
-from .rtdetrv2 import RTDetrV2
+from .rtdetr import RTDetr, RTDetrV2
 
-__all__ = ["RTDetrV2"]
+__all__ = ["RTDetr", "RTDetrV2"]
