@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Protocol, TypeAlias, runtime_checkable
+from typing import Protocol, TypeAlias, TypedDict, runtime_checkable
 
 import numpy as np
 
@@ -11,6 +11,11 @@ Detection: TypeAlias = tuple[float, float, float, float, float]
 
 Keypoints: TypeAlias = list[tuple[float, float, float]]
 """List of keypoints, each as (x, y, conf)"""
+
+
+class ModelInfo(TypedDict, total=False):
+  path: str
+  categories: list[str]
 
 
 @dataclass

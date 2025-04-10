@@ -1,17 +1,12 @@
 from abc import ABC, abstractmethod
-from typing import TypedDict
 
 import cv2
 import numpy as np
 import torch
 from transformers import RTDetrForObjectDetection, RTDetrImageProcessor, RTDetrV2ForObjectDetection
 
+from detection.core.interfaces import ModelInfo
 from detection.core.registry import ModelRegistry
-
-
-class ModelInfo(TypedDict, total=False):
-  path: str
-  categories: list[str]
 
 
 class RTDetrBase(ABC):
@@ -69,30 +64,30 @@ class RTDetrBase(ABC):
     return detections
 
 
-@ModelRegistry.register_class(categories=["RTDetr"])
+@ModelRegistry.register_class(categories=["RTDetr", "huggingface", "detr", "rtdetr", "transformer"])
 class RTDetr(RTDetrBase):
   """RTDETR detector implementation using HuggingFace Transformers"""
 
   SUPPORTED_MODELS = {
-    "rtdetr-r18": {"path": "PekingU/rtdetr_r18vd", "categories": ["small", "real-time", "rtdetr", "detr", "transformer", "huggingface"]},
-    "rtdetr-r34": {"path": "PekingU/rtdetr_r34vd", "categories": ["medium", "real-time", "rtdetr", "detr", "transformer", "huggingface"]},
-    "rtdetr-r50": {"path": "PekingU/rtdetr_r50vd", "categories": ["large", "rtdetr", "detr", "transformer", "huggingface"]},
-    "rtdetr-r101": {"path": "PekingU/rtdetr_r101vd", "categories": ["xlarge", "rtdetr", "detr", "transformer", "huggingface"]},
+    "rtdetr-r18": {"path": "PekingU/rtdetr_r18vd", "categories": ["small", "real-time"]},
+    "rtdetr-r34": {"path": "PekingU/rtdetr_r34vd", "categories": ["medium", "real-time"]},
+    "rtdetr-r50": {"path": "PekingU/rtdetr_r50vd", "categories": ["large"]},
+    "rtdetr-r101": {"path": "PekingU/rtdetr_r101vd", "categories": ["xlarge"]},
   }
 
   def __init__(self, model_name: str, device: str, conf: float, iou: float):
     super().__init__(model_name, device, conf, iou, RTDetrForObjectDetection)
 
 
-@ModelRegistry.register_class(categories=["RTDetrV2"])
+@ModelRegistry.register_class(categories=["RTDetrV2", "huggingface", "detr", "rtdetr", "transformer"])
 class RTDetrV2(RTDetrBase):
   """RTDETR V2 detector implementation using HuggingFace Transformers"""
 
   SUPPORTED_MODELS = {
-    "rtdetrv2-r18": {"path": "PekingU/rtdetr_v2_r18vd", "categories": ["small", "real-time", "rtdetr", "detr", "transformer", "huggingface"]},
-    "rtdetrv2-r34": {"path": "PekingU/rtdetr_v2_r34vd", "categories": ["medium", "real-time", "rtdetr", "detr", "transformer", "huggingface"]},
-    "rtdetrv2-r50": {"path": "PekingU/rtdetr_v2_r50vd", "categories": ["large", "rtdetr", "detr", "transformer", "huggingface"]},
-    "rtdetrv2-r101": {"path": "PekingU/rtdetr_v2_r101vd", "categories": ["xlarge", "rtdetr", "detr", "transformer", "huggingface"]},
+    "rtdetrv2-r18": {"path": "PekingU/rtdetr_v2_r18vd", "categories": ["small", "real-time"]},
+    "rtdetrv2-r34": {"path": "PekingU/rtdetr_v2_r34vd", "categories": ["medium", "real-time"]},
+    "rtdetrv2-r50": {"path": "PekingU/rtdetr_v2_r50vd", "categories": ["large"]},
+    "rtdetrv2-r101": {"path": "PekingU/rtdetr_v2_r101vd", "categories": ["xlarge"]},
   }
 
   def __init__(self, model_name: str, device: str, conf: float, iou: float):

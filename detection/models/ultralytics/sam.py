@@ -1,5 +1,3 @@
-from typing import Any
-
 import numpy as np
 
 from detection.core.registry import ModelRegistry
@@ -8,7 +6,7 @@ from .base import UltralyticsModel
 from .constants import CONFIDENCE_THRESHOLD, VERBOSE
 
 
-@ModelRegistry.register_class(categories=["SAM"])
+@ModelRegistry.register_class(categories=["SAM", "ultralytics"])
 class SAMModel(UltralyticsModel):
   """Base class for Segment Anything Models"""
 
@@ -33,10 +31,10 @@ class SAMModel(UltralyticsModel):
     "FastSAM-x": {"path": "FastSAM-x.pt", "categories": ["FastSAM", "large"]},
   }
 
-  def _load_model(self, model_path: str) -> Any:
+  def __init__(self, model_name: str, device: str, conf: float, iou: float):
     from ultralytics import SAM  # type: ignore
 
-    return SAM(model_path)
+    super().__init__(model_name, SAM, device, conf, iou)
 
   def predict_segmentation(
     self,

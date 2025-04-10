@@ -1,7 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar, TypedDict
+from typing import Any
 
 import numpy as np
+
+from detection.core.interfaces import ModelInfo
 
 from .constants import (
   CONFIDENCE_THRESHOLD,
@@ -13,17 +15,22 @@ from .constants import (
 )
 
 
-class ModelInfo(TypedDict, total=False):
-  path: str
-  categories: list[str]
-
-
 class UltralyticsModel(ABC):
   """Base class for all Ultralytics models"""
 
-  SUPPORTED_MODELS: ClassVar[dict[str, ModelInfo]] = {}
+  @property
+  @abstractmethod
+  def SUPPORTED_MODELS(self) -> dict[str, ModelInfo]:
+    """Dictionary mapping model names to their configuration details including path and categories"""
 
-  def __init__(self, model_name: str, device: str = DEFAULT_DEVICE, conf: float = CONFIDENCE_THRESHOLD, iou: float = IOU_THRESHOLD):
+  def __init__(
+    self,
+    model_name: str,
+    model_cls: type[Any],
+    device: str = DEFAULT_DEVICE,
+    conf: float = CONFIDENCE_THRESHOLD,
+    iou: float = IOU_THRESHOLD,
+  ):
     if model_name not in self.SUPPORTED_MODELS:
       raise ValueError(f"Model {model_name} not supported. Choose from: {', '.join(self.SUPPORTED_MODELS.keys())}")
 
@@ -34,15 +41,11 @@ class UltralyticsModel(ABC):
     model_path = MODEL_DIR / model_info["path"]
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
-    self.model = self._load_model(str(model_path))
+    self.model = model_cls(str(model_path))
     self.model.to(device)
     self.model_name = model_name
     self.conf_threshold = conf
     self.iou_threshold = iou
-
-  @abstractmethod
-  def _load_model(self, model_path: str) -> Any:
-    pass
 
   def predict(
     self,
@@ -54,11 +57,10 @@ class UltralyticsModel(ABC):
 
     for result in results:
       boxes = result.boxes
-      for box in boxes:
-        x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-        conf = float(box.conf[0])
-        w = x2 - x1
-        h = y2 - y1
-        detections.append((x1, y1, w, h, conf))
+      if len(boxes) > 0:
+        xyxy = boxes.xyxy.cpu().numpy()
+        confs = boxes.conf.cpu().numpy()
+        wh = xyxy[:, 2:4] - xyxy[:, 0:2]
+        detections = [(x1, y1, w, h, conf) for (x1, y1, _, _), (w, h), conf in zip(xyxy, wh, confs)]
 
     return detections

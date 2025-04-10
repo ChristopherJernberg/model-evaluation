@@ -1,5 +1,3 @@
-from typing import Any
-
 import numpy as np
 
 from detection.core.registry import ModelRegistry
@@ -8,7 +6,7 @@ from .base import UltralyticsModel
 from .constants import CONFIDENCE_THRESHOLD, VERBOSE
 
 
-@ModelRegistry.register_class(categories=["YOLO"])
+@ModelRegistry.register_class(categories=["YOLO", "ultralytics"])
 class YOLOModel(UltralyticsModel):
   """Base class for YOLO models"""
 
@@ -71,10 +69,10 @@ class YOLOModel(UltralyticsModel):
     # "yolo_nas_l": "yolo_nas_l.pt",
   }
 
-  def _load_model(self, model_path: str) -> Any:
+  def __init__(self, model_name: str, device: str, conf: float, iou: float):
     from ultralytics import YOLO  # type: ignore
 
-    return YOLO(model_path)
+    super().__init__(model_name, YOLO, device, conf, iou)
 
 
 @ModelRegistry.register_class(is_pose_capable=True, categories=["YOLO-Pose"])

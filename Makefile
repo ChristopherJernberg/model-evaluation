@@ -1,8 +1,5 @@
 .PHONY: run lint format clean deep-clean
 
-run:
-	python3 main.py
-	
 lint:
 	ruff check .
 	mypy --namespace-packages .
