@@ -9,14 +9,11 @@ from detection.evaluation import ModelEvaluator
 from detection.evaluation.metrics import EvaluationMetrics
 
 
-def main():
-  start_time = time.perf_counter()
-
-  model_name = "rtdetrv2-r18vd"  # "yolov8m-pose", "rtdetrv2-r18vd", or another model
-  dataset_name = "evanette001"
-
-  # Define whether to visualize
-  visualize = True
+def evaluate_model(model_name, dataset_name, visualize=True, start_time=None):
+  """Evaluate a single model on the specified dataset"""
+  print(f"\n{'=' * 50}")
+  print(f"Evaluating model: {model_name}")
+  print(f"{'=' * 50}")
 
   if visualize:
     results_dir = Path("results")
@@ -37,7 +34,7 @@ def main():
   else:
     output_dir = None
 
-  # Set initial conf_threshold to 0 to evaluate across all thresholds
+  # Set initial conf_threshold to 0 to evaluate and find optimal threshold across all thresholds
   model_config = ModelConfig(
     name=model_name,
     device="mps",  # "mps", "cuda", or "cpu"
@@ -196,6 +193,48 @@ def main():
           print(f"\nSpeed at optimal threshold ({optimal_threshold:.2f}): {opt_fps:.1f} FPS")
     else:
       print("No video files found for benchmarking speed")
+
+  return {
+    "model_name": model_name,
+    "mAP": avg_metrics["mAP"],
+    "ap50": avg_metrics["ap50"],
+    "optimal_threshold": optimal_threshold,
+    "optimal_f1": optimal_f1,
+    "fps": avg_metrics["fps"],
+    "inference_time_ms": avg_metrics["avg_inference_time"] * 1000,
+  }
+
+
+def main():
+  start_time = time.perf_counter()
+
+  # List of models to evaluate
+  models = ["rtdetrv2-r18vd", "rtdetrv2-r34vd", "rtdetrv2-r50vd", "yolov8m-pose", "yolov8m", "yolo11m-pose", "yolo12m", "yolo11n-seg"]
+
+  dataset_name = "evanette001"
+  visualize = True
+
+  results = []
+
+  for model_name in models:
+    model_result = evaluate_model(model_name, dataset_name, visualize, start_time)
+    results.append(model_result)
+
+  results.sort(key=lambda x: x["optimal_f1"], reverse=True)
+
+  print("\n\n" + "=" * 80)
+  print("MODELS COMPARISON (sorted by optimal F1 score)")
+  print("=" * 80)
+
+  print("\n{:<15} {:<8} {:<8} {:<8} {:<10} {:<8} {:<12}".format("Model", "F1 Score", "mAP", "AP@0.5", "Opt Thresh", "FPS", "Infer Time"))
+  print("-" * 80)
+
+  for result in results:
+    print(
+      "{:<15} {:<8.3f} {:<8.4f} {:<8.4f} {:<10.3f} {:<8.1f} {:<12.2f}ms".format(
+        result["model_name"], result["optimal_f1"], result["mAP"], result["ap50"], result["optimal_threshold"], result["fps"], result["inference_time_ms"]
+      )
+    )
 
   end_time = time.perf_counter()
   total_seconds = end_time - start_time
