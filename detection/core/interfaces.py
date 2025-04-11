@@ -32,7 +32,7 @@ class Detector(Protocol):
 
   model_name: str
 
-  def predict(self, frame: np.ndarray) -> list[Detection]: ...
+  def detect(self, frame: np.ndarray) -> list[Detection]: ...
 
 
 @runtime_checkable
@@ -41,7 +41,7 @@ class PoseDetector(Protocol):
 
   model_name: str
 
-  def predict_pose(self, frame: np.ndarray) -> list[tuple[Keypoints, Detection]]: ...
+  def detect_pose(self, frame: np.ndarray) -> list[tuple[Keypoints, Detection]]: ...
 
 
 @runtime_checkable
@@ -50,4 +50,4 @@ class SegmentationDetector(Protocol):
 
   model_name: str
 
-  def predict_segmentation(self, frame: np.ndarray) -> np.ndarray: ...
+  def detect_segmentation(self, frame: np.ndarray) -> np.ndarray: ...

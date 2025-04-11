@@ -10,7 +10,6 @@ from .constants import (
   DEFAULT_DEVICE,
   IOU_THRESHOLD,
   MODEL_DIR,
-  VALID_DEVICES,
   VERBOSE,
 )
 
@@ -34,9 +33,6 @@ class UltralyticsModel(ABC):
     if model_name not in self.SUPPORTED_MODELS:
       raise ValueError(f"Model {model_name} not supported. Choose from: {', '.join(self.SUPPORTED_MODELS.keys())}")
 
-    if device not in VALID_DEVICES:
-      raise ValueError(f"Device must be one of: {', '.join(VALID_DEVICES)}")
-
     model_info = self.SUPPORTED_MODELS[model_name]
     model_path = MODEL_DIR / model_info["path"]
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -47,7 +43,7 @@ class UltralyticsModel(ABC):
     self.conf_threshold = conf
     self.iou_threshold = iou
 
-  def predict(
+  def detect(
     self,
     frame: np.ndarray,
   ) -> list[tuple[float, float, float, float, float]]:

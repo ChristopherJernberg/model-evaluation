@@ -29,7 +29,7 @@ class RTDetrBase(ABC):
     self.model.eval()
     self.person_class_id = 0
 
-  def predict(self, frame: np.ndarray) -> list[tuple[float, float, float, float, float]]:
+  def detect(self, frame: np.ndarray) -> list[tuple[float, float, float, float, float]]:
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     height, width = frame.shape[:2]
 
@@ -70,9 +70,13 @@ class RTDetr(RTDetrBase):
 
   SUPPORTED_MODELS = {
     "rtdetr-r18": {"path": "PekingU/rtdetr_r18vd", "categories": ["small", "real-time"]},
+    "rtdetr-18c": {"path": "PekingU/rtdetr_r18vd_coco_o365", "categories": ["small", "real-time"]},
     "rtdetr-r34": {"path": "PekingU/rtdetr_r34vd", "categories": ["medium", "real-time"]},
+    "rtdetr-34c": {"path": "PekingU/rtdetr_r34vd_coco_o365", "categories": ["medium", "real-time"]},
     "rtdetr-r50": {"path": "PekingU/rtdetr_r50vd", "categories": ["large"]},
+    "rtdetr-50c": {"path": "PekingU/rtdetr_r50vd_coco_o365", "categories": ["large"]},
     "rtdetr-r101": {"path": "PekingU/rtdetr_r101vd", "categories": ["xlarge"]},
+    "rtdetr-101c": {"path": "PekingU/rtdetr_r101vd_coco_o365", "categories": ["xlarge"]},
   }
 
   def __init__(self, model_name: str, device: str, conf: float, iou: float):

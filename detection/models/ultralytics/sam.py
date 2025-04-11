@@ -36,7 +36,7 @@ class SAMModel(UltralyticsModel):
 
     super().__init__(model_name, SAM, device, conf, iou)
 
-  def predict_segmentation(
+  def detect_segmentation(
     self,
     frame: np.ndarray,
     verbose: bool = VERBOSE,

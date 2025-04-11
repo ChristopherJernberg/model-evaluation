@@ -89,7 +89,7 @@ def process_video(
       gt_boxes.append([row["bb_left"], row["bb_top"], row["bb_width"], row["bb_height"]])
 
     inference_start = time.perf_counter()
-    pred_boxes = model.predict(frame)
+    pred_boxes = model.detect(frame)
     inference_end = time.perf_counter()
 
     inference_time = inference_end - inference_start
@@ -469,7 +469,7 @@ class ModelEvaluator:
       model.conf_threshold = 0.25
 
     for _ in range(15):
-      _ = model.predict(frames[0])
+      _ = model.detect(frames[0])
 
     speed_data = SpeedVsThresholdData()
     speed_data.device = self.model_config.device
@@ -481,7 +481,7 @@ class ModelEvaluator:
       times = []
       for frame in frames:
         start_time = time.perf_counter()
-        _ = model.predict(frame)
+        _ = model.detect(frame)
         end_time = time.perf_counter()
         times.append(end_time - start_time)
 

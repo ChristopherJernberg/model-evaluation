@@ -110,7 +110,7 @@ class YOLOPoseModel(YOLOModel):
     [11, 12],  # torso
   ]
 
-  def predict_pose(
+  def detect_pose(
     self,
     frame: np.ndarray,
     verbose: bool = VERBOSE,
@@ -157,7 +157,7 @@ class YOLOSegModel(YOLOModel):
     "yolo11x-seg": {"path": "yolo11x-seg.pt", "categories": ["v11", "seg"]},
   }
 
-  def predict_segmentation(
+  def detect_segmentation(
     self,
     frame: np.ndarray,
     verbose: bool = VERBOSE,
@@ -176,7 +176,7 @@ class YOLOSegModel(YOLOModel):
 
     return mask
 
-  def predict_with_masks(
+  def detect_with_masks(
     self, frame: np.ndarray, verbose: bool = VERBOSE, conf: float = CONFIDENCE_THRESHOLD
   ) -> list[tuple[tuple[float, float, float, float, float], np.ndarray]]:
     results = self.model(frame, verbose=verbose, conf=conf)

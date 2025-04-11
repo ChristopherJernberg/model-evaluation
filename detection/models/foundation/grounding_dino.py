@@ -26,7 +26,7 @@ class GroundingDINODetector:
 
     self.text_prompt = ["person", "human"]
 
-  def predict(self, frame: np.ndarray) -> list[Detection]:
+  def detect(self, frame: np.ndarray) -> list[Detection]:
     image = Image.fromarray(frame)
     text_labels = [self.text_prompt]
     inputs = self.processor(images=image, text=text_labels, return_tensors="pt").to(self.device)
