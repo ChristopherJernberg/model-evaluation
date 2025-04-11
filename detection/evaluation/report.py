@@ -1,7 +1,3 @@
-"""
-Report generation module for model evaluation results.
-"""
-
 import time
 from pathlib import Path
 
@@ -99,10 +95,7 @@ def generate_markdown_report(results, combined_metrics, metadata, output_dir):
 
 
 def generate_html_report(markdown_path, html_path):
-  """Convert markdown report to HTML for better viewing.
-
-  Requires pymdownx or markdown package. If not available, skips HTML generation.
-  """
+  """Convert markdown report to HTML for better viewing."""
   try:
     with open(markdown_path) as f:
       md_content = f.read()

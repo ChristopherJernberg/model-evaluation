@@ -24,7 +24,6 @@ def process_video(
   visualize: bool = False,
   progress_idx: int = 0,
   progress_dict: dict[int, int] | None = None,
-  conf_threshold: float = 0.05,
   return_raw_data: bool = False,
 ) -> EvaluationMetrics | tuple[EvaluationMetrics, tuple[list[list[BoundingBox]], list[list[Detection]]]]:
   """
