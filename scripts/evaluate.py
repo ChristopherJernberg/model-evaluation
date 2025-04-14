@@ -1,0 +1,438 @@
+import os
+import sys
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+import argparse
+import time
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+from detection.core.interfaces import ModelConfig
+from detection.core.registry import ModelRegistry
+from detection.eval.pipeline.config import EvaluationConfig, OutputConfig
+from detection.eval.pipeline.pipeline import EvaluationPipeline
+
+
+def parse_args():
+  parser = argparse.ArgumentParser(description="Evaluate and compare object detection models")
+
+  parser.add_argument("--benchmark-only", "-b", action="store_true", help="Run speed benchmark without evaluation")
+
+  # Model selection arguments
+  model_group = parser.add_mutually_exclusive_group(required=True)
+  model_group.add_argument("--model", "-m", help="Specific model name to evaluate")
+  model_group.add_argument("--models", "-ms", nargs="+", help="Multiple specific model names to evaluate")
+  model_group.add_argument("--category", "-c", help="Category of models to evaluate (models matching ANY specified category)")
+  model_group.add_argument("--all-categories", "-ac", nargs="+", help="Categories of models to evaluate (models matching ALL specified categories)")
+  model_group.add_argument("--all", "-a", action="store_true", help="Evaluate all available models")
+  model_group.add_argument("--list-categories", "-lc", action="store_true", help="List all available categories")
+  model_group.add_argument("--list-models", "-lm", action="store_true", help="List all available models")
+  model_group.add_argument("--list-models-in-category", "-lmc", help="List all models in a specific category")
+
+  # Dataset arguments
+  parser.add_argument("--dataset", "-d", default="evanette001", help="Dataset name to use")
+
+  # Device arguments
+  parser.add_argument("--device", default="mps", choices=["mps", "cuda", "cpu"], help="Device for inference")
+
+  # Threshold arguments
+  parser.add_argument("--iou", type=float, default=0.45, help="IoU threshold")
+
+  # Benchmark options
+  benchmark_group = parser.add_argument_group("Benchmark Options")
+  benchmark_group.add_argument("--thresholds", nargs="+", type=float, help="Custom confidence thresholds for benchmarking")
+  benchmark_group.add_argument("--benchmark-frames", type=int, default=75, help="Number of frames to use for benchmarking")
+  benchmark_group.add_argument("--benchmark-video", help="Specific video file to use for benchmarking")
+
+  # Output arguments
+  parser.add_argument("--output-dir", default="results", help="Output directory")
+  parser.add_argument("--save-videos", action="store_true", help="Save visualization videos")
+  parser.add_argument("--save-plots", action="store_true", help="Save PR curves and plots")
+  parser.add_argument("--save-metrics", action="store_true", help="Save metrics JSON files")
+  parser.add_argument("--save-reports", action="store_true", help="Save benchmark reports")
+  parser.add_argument("--save-all", action="store_true", help="Save all outputs")
+  parser.add_argument("--save-none", action="store_true", help="Don't save any outputs")
+
+  # Processing arguments
+  parser.add_argument("--workers", type=int, default=None, help="Number of worker processes")
+
+  return parser.parse_args()
+
+
+def evaluate_single_model(
+  model_name: str,
+  device: str,
+  dataset: str,
+  iou_threshold: float,
+  output_dir: str,
+  save_videos: bool,
+  save_plots: bool,
+  save_metrics: bool,
+  save_reports: bool,
+  workers: int = None,
+  start_time: float = None,
+):
+  """Evaluate a single model with the given parameters"""
+  model_start_time = time.perf_counter() if start_time is None else start_time
+
+  model_config = ModelConfig(
+    name=model_name,
+    device=device,
+    conf_threshold=0.0,  # Start with 0 to find optimal threshold
+    iou_threshold=iou_threshold,
+  )
+
+  output_config = OutputConfig(base_dir=Path(output_dir), save_videos=save_videos, save_plots=save_plots, save_metrics=save_metrics, save_reports=save_reports)
+  config = EvaluationConfig(model_config=model_config, data_dir=Path("testdata") / dataset, output=output_config, num_workers=workers)
+
+  print(f"\nEvaluating model: {model_name}")
+  print(f"Device: {device}")
+  print(f"Dataset: {dataset}")
+  print(f"IoU threshold: {iou_threshold}")
+
+  pipeline = EvaluationPipeline(config)
+  model_results = pipeline.run()
+
+  categories = ModelRegistry.get_model_categories(model_name)
+  model_results["categories"] = categories
+
+  end_time = time.perf_counter()
+  elapsed_time = end_time - model_start_time
+
+  if elapsed_time < 60:
+    print(f"\nModel execution time: {elapsed_time:.2f} seconds")
+  else:
+    minutes = int(elapsed_time // 60)
+    seconds = elapsed_time % 60
+    print(f"\nModel execution time: {minutes} minutes and {seconds:.2f} seconds")
+
+  print(f"\nOptimal threshold: {model_results.get('optimal_threshold', 0.0):.3f}")
+  print(f"Optimal F1 score: {model_results.get('optimal_f1', 0.0):.3f}")
+
+  return model_results
+
+
+def run_benchmark(
+  models_to_evaluate: list[str],
+  device: str,
+  dataset: str,
+  output_dir: str,
+  thresholds: list[float] = None,
+  benchmark_frames: int = 75,
+  benchmark_video: str = None,
+  save_plots: bool = True,
+):
+  """Run speed benchmark for the specified models"""
+  print(f"Running speed benchmark for {len(models_to_evaluate)} models:")
+
+  for model in models_to_evaluate:
+    print(f"  - {model}")
+
+  print("\nBenchmark configuration:")
+  print(f"  Device: {device}")
+  print(f"  Frames: {benchmark_frames}")
+
+  if thresholds:
+    print(f"  Custom thresholds: {', '.join(str(t) for t in thresholds)}")
+
+  if not benchmark_video:
+    dataset_path = Path("testdata") / dataset
+    video_dir = dataset_path / "videos"
+    if video_dir.exists():
+      video_files = sorted(video_dir.glob("*.mp4"))
+      if video_files:
+        benchmark_video = str(video_files[0])
+
+  if not benchmark_video or not Path(benchmark_video).exists():
+    print("Error: No valid video found for benchmarking.")
+    return
+
+  print(f"Using video: {Path(benchmark_video).name}\n")
+
+  benchmark_results = {}
+
+  for model_name in models_to_evaluate:
+    try:
+      plots_dir = None
+      if save_plots:
+        plots_dir = Path(output_dir) / "visualizations" / "plots" / model_name
+        plots_dir.mkdir(parents=True, exist_ok=True)
+
+      model_config = ModelConfig(
+        name=model_name,
+        device=device,
+        conf_threshold=0.25,  # Default for benchmarking
+        iou_threshold=0.45,  # Default for benchmarking
+      )
+
+      from detection.eval.pipeline.inference import ModelInference
+
+      print(f"\nBenchmarking {model_name} ({device})...")
+      model_inference = ModelInference(model_config)
+      model_inference.setup()
+
+      cap = cv2.VideoCapture(benchmark_video)
+      ret, frame = cap.read()
+      cap.release()
+
+      if not ret:
+        print(f"Error: Could not read frame from {benchmark_video}")
+        continue
+
+      for _ in range(10):
+        _ = model_inference.detect(frame)
+
+      benchmark_thresholds = thresholds if thresholds else [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+      fps_values = []
+      inference_times = []
+
+      for threshold in benchmark_thresholds:
+        model_inference.set_confidence_threshold(threshold)
+
+        cap = cv2.VideoCapture(benchmark_video)
+        frame_times = []
+
+        for i in range(benchmark_frames):
+          ret, frame = cap.read()
+          if not ret:
+            break
+
+          start_time = time.perf_counter()
+          _ = model_inference.detect(frame)
+          end_time = time.perf_counter()
+
+          frame_times.append(end_time - start_time)
+
+        cap.release()
+
+        avg_time = np.mean(frame_times)
+        fps = 1.0 / avg_time if avg_time > 0 else 0
+
+        fps_values.append(float(fps))
+        inference_times.append(float(avg_time))
+
+      print(f"\nSpeed benchmarking results for {model_name} ({device}):")
+      print("Threshold  |  FPS  |  Inference Time (ms)")
+      print("-" * 45)
+
+      for threshold, fps in zip(benchmark_thresholds, fps_values):
+        inference_time = 1000 / fps if fps > 0 else float('inf')
+        print(f"{threshold:.2f}       |  {fps:.1f}  |  {inference_time:.2f} ms")
+
+      if plots_dir:
+        import matplotlib
+
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+
+        plt.figure(figsize=(10, 6))
+        plt.plot(benchmark_thresholds, fps_values, marker='o', linewidth=2, markersize=6)
+        plt.xlabel('Confidence Threshold')
+        plt.ylabel('FPS')
+        plt.title(f'Speed vs Threshold - {model_name} ({device})')
+        plt.grid(True, alpha=0.3, linestyle='--')
+        plt.savefig(plots_dir / "speed_vs_threshold.png", dpi=150)
+        plt.close()
+
+      # Store benchmark results
+      benchmark_results[model_name] = {
+        "thresholds": benchmark_thresholds,
+        "fps_values": fps_values,
+        "categories": ModelRegistry.get_model_categories(model_name),
+        "device": device,
+      }
+
+    except Exception as e:
+      print(f"Error benchmarking model {model_name}: {e}")
+
+  if len(benchmark_results) > 1:
+    print("\n\n" + "=" * 80)
+    print("SPEED BENCHMARK COMPARISON")
+    print("=" * 80)
+
+    common_threshold = 0.5
+
+    print(f"\nPerformance at threshold ~{common_threshold:.2f}:")
+    print(f"{'Model':<15} {'FPS':<8} {'Infer Time':<12} {'Device':<6} {'Categories':<30}")
+    print("-" * 80)
+
+    sorted_results = []
+    for model_name, data in benchmark_results.items():
+      idx = np.abs(np.array(data["thresholds"]) - common_threshold).argmin()
+      fps = data["fps_values"][idx]
+      inference_time = 1000 / fps if fps > 0 else float('inf')
+      device = data.get("device", "unknown")
+
+      categories_str = ", ".join(data["categories"])
+      if len(categories_str) > 30:
+        categories_str = categories_str[:27] + "..."
+
+      sorted_results.append((model_name, fps, inference_time, device, categories_str))
+
+    sorted_results.sort(key=lambda x: x[1], reverse=True)
+
+    for model_name, fps, inference_time, device, categories_str in sorted_results:
+      print(f"{model_name:<15} {fps:<8.1f} {inference_time:>6.2f} ms{' ':<3} {device:<6} {categories_str:<30}")
+
+
+def main():
+  args = parse_args()
+  start_time = time.perf_counter()
+
+  if args.save_all:
+    args.save_videos = args.save_plots = args.save_metrics = args.save_reports = True
+  elif args.save_none:
+    args.save_videos = args.save_plots = args.save_metrics = args.save_reports = False
+  elif not any([args.save_videos, args.save_plots, args.save_metrics, args.save_reports]):
+    if args.benchmark_only:
+      args.save_plots = True
+      args.save_videos = args.save_metrics = args.save_reports = False
+    else:
+      args.save_plots = args.save_metrics = args.save_reports = True
+      args.save_videos = False
+
+  ModelRegistry._discover_models()
+
+  if args.list_categories:
+    categories = ModelRegistry.list_categories()
+    print("\nAvailable categories:")
+    for category in categories:
+      print(f"  - {category}")
+    return
+
+  if args.list_models:
+    models = ModelRegistry.list_supported_models()
+    print("\nAvailable models:")
+    for model in models:
+      categories = ModelRegistry.get_model_categories(model)
+      print(f"  - {model} (Categories: {', '.join(categories)})")
+    return
+
+  if args.list_models_in_category:
+    models = ModelRegistry.list_models_by_category(args.list_models_in_category)
+    print(f"\nModels in category '{args.list_models_in_category}':")
+    for model in models:
+      all_categories = ModelRegistry.get_model_categories(model)
+      print(f"  - {model} (All categories: {', '.join(all_categories)})")
+    return
+
+  if args.model:
+    models_to_evaluate = [args.model]
+  elif args.models:
+    models_to_evaluate = args.models
+  elif args.all:
+    models_to_evaluate = ModelRegistry.list_supported_models()
+  elif args.category:
+    models_to_evaluate = ModelRegistry.list_models_by_category(args.category)
+  elif args.all_categories:
+    all_models = ModelRegistry.list_supported_models()
+    models_to_evaluate = []
+    for model in all_models:
+      model_categories = set(ModelRegistry.get_model_categories(model))
+      if all(category in model_categories for category in args.all_categories):
+        models_to_evaluate.append(model)
+  else:
+    print("No models specified for evaluation.")
+    return
+
+  if not models_to_evaluate:
+    print("No models found for evaluation.")
+    return
+
+  if args.benchmark_only:
+    run_benchmark(
+      models_to_evaluate=models_to_evaluate,
+      device=args.device,
+      dataset=args.dataset,
+      output_dir=args.output_dir,
+      thresholds=args.thresholds,
+      benchmark_frames=args.benchmark_frames,
+      benchmark_video=args.benchmark_video,
+      save_plots=args.save_plots,
+    )
+    return
+
+  results = []
+
+  for model_name in models_to_evaluate:
+    try:
+      model_result = evaluate_single_model(
+        model_name=model_name,
+        device=args.device,
+        dataset=args.dataset,
+        iou_threshold=args.iou,
+        output_dir=args.output_dir,
+        save_videos=args.save_videos,
+        save_plots=args.save_plots,
+        save_metrics=args.save_metrics,
+        save_reports=args.save_reports,
+        workers=args.workers,
+        start_time=start_time,
+      )
+      results.append(model_result)
+    except Exception as e:
+      print(f"Error evaluating model {model_name}: {e}")
+
+  if len(results) > 1:
+    results.sort(key=lambda x: x.get("optimal_f1", 0), reverse=True)
+
+    print("\n" + "=" * 120)
+    print("MODELS COMPARISON (sorted by optimal F1 score)")
+    print("=" * 120)
+
+    print(
+      "\n{:<15} {:<8} {:<8} {:<8} {:<10} {:<8} {:<12} {:<6} {:<6} {:<30}".format(
+        "Model", "F1 Score", "mAP", "AP@0.5", "Opt Thresh", "FPS", "Infer Time", "Device", "IoU", "Categories"
+      )
+    )
+    print("-" * 120)
+
+    for result in results:
+      model_name = result.get("model_name", "")
+
+      categories_str = ", ".join(result.get("categories", []))
+      if len(categories_str) > 30:
+        categories_str = categories_str[:27] + "..."
+
+      optimal_f1 = result.get("optimal_f1", 0)
+      optimal_threshold = result.get("optimal_threshold", 0)
+      mAP = result.get("mAP", 0)
+      ap50 = result.get("ap50", 0)
+      fps = result.get("fps", 0)
+
+      inference_time_ms = 1000 / fps if fps > 0 else 0
+
+      print(
+        "{:<15} {:<8.3f} {:<8.4f} {:<8.4f} {:<10.3f} {:<8.1f} {:>6.2f} ms{:<3} {:<6} {:<6.2f} {:<30}".format(
+          model_name,
+          optimal_f1,
+          mAP,
+          ap50,
+          optimal_threshold,
+          fps,
+          inference_time_ms,
+          "",
+          args.device,
+          args.iou,
+          categories_str,
+        )
+      )
+
+  end_time = time.perf_counter()
+  total_seconds = end_time - start_time
+
+  if total_seconds >= 60:
+    minutes = int(total_seconds // 60)
+    seconds = total_seconds % 60
+    print(f"\nTotal execution time: {minutes} minutes and {seconds:.2f} seconds")
+  else:
+    print(f"\nTotal execution time: {total_seconds:.2f} seconds")
+
+  return results
+
+
+if __name__ == "__main__":
+  main()
