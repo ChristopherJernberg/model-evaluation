@@ -31,6 +31,7 @@ def parse_args():
   model_group.add_argument("--list-categories", "-lc", action="store_true", help="List all available categories")
   model_group.add_argument("--list-models", "-lm", action="store_true", help="List all available models")
   model_group.add_argument("--list-models-in-category", "-lmc", help="List all models in a specific category")
+  model_group.add_argument("--list-datasets", "-ld", action="store_true", help="List all available datasets in testdata directory")
 
   # Dataset arguments
   parser.add_argument("--dataset", "-d", default="evanette001", help="Dataset name to use")
@@ -281,6 +282,22 @@ def run_benchmark(
 def main():
   args = parse_args()
   start_time = time.perf_counter()
+
+  if args.list_datasets:
+    testdata_path = Path("testdata")
+    if not testdata_path.exists():
+      print(f"Error: testdata directory not found at {testdata_path.absolute()}")
+      return
+
+    datasets = [d.name for d in testdata_path.iterdir() if d.is_dir()]
+    if not datasets:
+      print("No datasets found in testdata directory")
+      return
+
+    print("\nAvailable datasets:")
+    for dataset in sorted(datasets):
+      print(f"  - {dataset}")
+    return
 
   if args.save_all:
     args.save_videos = args.save_plots = args.save_metrics = args.save_reports = True
