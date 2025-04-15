@@ -41,6 +41,7 @@ def parse_args():
 
   # Threshold arguments
   parser.add_argument("--iou", type=float, default=0.45, help="IoU threshold")
+  parser.add_argument("--conf", type=float, help="Custom confidence threshold (skips optimal threshold search if provided)")
 
   # Benchmark options
   benchmark_group = parser.add_argument_group("Benchmark Options")
@@ -70,25 +71,32 @@ def evaluate_single_model(
   save_plots: bool,
   save_metrics: bool,
   save_reports: bool,
-  start_time: float = None,
+  start_time: float | None = None,
+  conf_threshold: float | None = None,
 ):
   """Evaluate a single model with the given parameters"""
   model_start_time = time.perf_counter() if start_time is None else start_time
 
+  initial_conf = conf_threshold if conf_threshold is not None else 0.0
+
   model_config = ModelConfig(
     name=model_name,
     device=device,
-    conf_threshold=0.0,  # Start with 0 to find optimal threshold
+    conf_threshold=initial_conf,
     iou_threshold=iou_threshold,
   )
 
   output_config = OutputConfig(base_dir=Path(output_dir), save_videos=save_videos, save_plots=save_plots, save_metrics=save_metrics, save_reports=save_reports)
-  config = EvaluationConfig(model_config=model_config, data_dir=Path("testdata") / dataset, output=output_config)
+  config = EvaluationConfig(model_config=model_config, data_dir=Path("testdata") / dataset, output=output_config, use_fixed_conf=conf_threshold is not None)
 
   print(f"\nEvaluating model: {model_name}")
   print(f"Device: {device}")
   print(f"Dataset: {dataset}")
   print(f"IoU threshold: {iou_threshold}")
+  if conf_threshold is not None:
+    print(f"Confidence threshold: {conf_threshold} (fixed)")
+  else:
+    print("Confidence threshold: Auto (will search for optimal)")
 
   pipeline = EvaluationPipeline(config)
   model_results = pipeline.run()
@@ -106,10 +114,17 @@ def evaluate_single_model(
     seconds = elapsed_time % 60
     print(f"\nModel execution time: {minutes} minutes and {seconds:.2f} seconds")
 
-  print(f"\nOptimal threshold: {model_results.get('optimal_threshold', 0.0):.4f}")
-  print(f"Optimal F1 score: {model_results.get('optimal_f1', 0.0):.4f}")
-  print(f"Precision at optimal threshold: {model_results.get('optimal_precision', 0.0):.4f}")
-  print(f"Recall at optimal threshold: {model_results.get('optimal_recall', 0.0):.4f}")
+  if conf_threshold is not None:
+    threshold_type = "Fixed"
+    threshold_value = conf_threshold
+  else:
+    threshold_type = "Optimal"
+    threshold_value = model_results.get('optimal_threshold', 0.0)
+
+  print(f"\n{threshold_type} threshold: {threshold_value:.4f}")
+  print(f"F1 score: {model_results.get('optimal_f1', 0.0):.4f}")
+  print(f"Precision: {model_results.get('optimal_precision', 0.0):.4f}")
+  print(f"Recall: {model_results.get('optimal_recall', 0.0):.4f}")
   print(f"mAP: {model_results.get('mAP', 0.0):.4f}")
   print(f"AP@0.5: {model_results.get('ap50', 0.0):.4f}")
   print(f"AP@0.75: {model_results.get('ap75', 0.0):.4f}")
@@ -390,6 +405,7 @@ def main():
         save_metrics=args.save_metrics,
         save_reports=args.save_reports,
         start_time=start_time,
+        conf_threshold=args.conf,
       )
       results.append(model_result)
     except Exception as e:

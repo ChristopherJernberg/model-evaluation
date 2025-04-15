@@ -36,22 +36,30 @@ class Reporter:
 
     self.markdown_reporter.generate_report(results, combined_metrics, metadata)
 
-  def print_summary(self, results: dict[int, EvaluationMetrics], combined_metrics: EvaluationMetrics | None, optimal_threshold: float) -> None:
+  def print_summary(
+    self, results: dict[int, EvaluationMetrics], combined_metrics: EvaluationMetrics | None, optimal_threshold: float, is_fixed_threshold: bool = False
+  ) -> None:
     """Print summary of results to console"""
     if not results:
       print("No results to display")
       return
 
+    threshold_type = "Fixed" if is_fixed_threshold else "Optimal"
+    threshold_description = "(manually specified)" if is_fixed_threshold else "(automatically determined)"
+
     print("\nEvaluation Results:")
     print("=" * 50)
+    print(f"\nUsing {threshold_type} threshold: {optimal_threshold:.3f} {threshold_description}")
+    print("All metrics below are calculated using this threshold.")
+    print("-" * 50)
 
     # Print per-video results
     for video_id, metrics in results.items():
       print(f"\nVideo {video_id}:")
       print("\nDetection Metrics:")
-      print(f"  mAP (IoU=0.5:0.95): {metrics.mAP:.4f}")
-      print(f"  AP@0.5: {metrics.ap50:.4f}")
-      print(f"  AP@0.75: {metrics.ap75:.4f}")
+      print(f"  mAP (IoU=0.5:0.95): {metrics.mAP:.3f}")
+      print(f"  AP@0.5: {metrics.ap50:.3f}")
+      print(f"  AP@0.75: {metrics.ap75:.3f}")
 
       # Find metrics at optimal threshold
       if metrics.pr_curve_data and "thresholds" in metrics.pr_curve_data:
@@ -61,9 +69,9 @@ class Reporter:
         recall = metrics.pr_curve_data["recalls"][threshold_idx]
         f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
 
-        print(f"  Precision@{optimal_threshold:.2f}: {precision:.4f}")
-        print(f"  Recall@{optimal_threshold:.2f}: {recall:.4f}")
-        print(f"  F1 Score@{optimal_threshold:.2f}: {f1:.4f}")
+        print(f"  Precision@{optimal_threshold:.2f}: {precision:.3f}")
+        print(f"  Recall@{optimal_threshold:.2f}: {recall:.3f}")
+        print(f"  F1 Score@{optimal_threshold:.2f}: {f1:.3f}")
 
       print("\nCounts:")
       print(f"  True Positives: {metrics.frame_metrics.true_positives}")
@@ -96,9 +104,9 @@ class Reporter:
       print("=" * 50)
 
       print("\nArithmetic Mean (average across videos):")
-      print(f"  mAP (IoU=0.5:0.95): {avg_metrics['mAP']:.4f}")
-      print(f"  AP@0.5: {avg_metrics['ap50']:.4f}")
-      print(f"  AP@0.75: {avg_metrics['ap75']:.4f}")
+      print(f"  mAP (IoU=0.5:0.95): {avg_metrics['mAP']:.3f}")
+      print(f"  AP@0.5: {avg_metrics['ap50']:.3f}")
+      print(f"  AP@0.75: {avg_metrics['ap75']:.3f}")
       print(f"  Avg FPS: {avg_metrics['fps']:.2f}")
       print(f"  Avg Inference Time: {avg_metrics['avg_inference_time'] * 1000:.2f} ms")
       print(f"  Avg TP: {avg_metrics['true_positives']:.1f}")
@@ -106,9 +114,9 @@ class Reporter:
       print(f"  Avg FN: {avg_metrics['false_negatives']:.1f}")
 
       print("\nCombined Metrics (detection-weighted):")
-      print(f"  mAP (IoU=0.5:0.95): {combined_metrics.mAP:.4f}")
-      print(f"  AP@0.5: {combined_metrics.ap50:.4f}")
-      print(f"  AP@0.75: {combined_metrics.ap75:.4f}")
+      print(f"  mAP (IoU=0.5:0.95): {combined_metrics.mAP:.3f}")
+      print(f"  AP@0.5: {combined_metrics.ap50:.3f}")
+      print(f"  AP@0.75: {combined_metrics.ap75:.3f}")
 
       if combined_metrics.pr_curve_data and "thresholds" in combined_metrics.pr_curve_data:
         thresholds = combined_metrics.pr_curve_data["thresholds"]
@@ -117,9 +125,9 @@ class Reporter:
         recall = combined_metrics.pr_curve_data["recalls"][threshold_idx]
         f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
 
-        print(f"  Precision@{optimal_threshold:.2f}: {precision:.4f}")
-        print(f"  Recall@{optimal_threshold:.2f}: {recall:.4f}")
-        print(f"  F1 Score@{optimal_threshold:.2f}: {f1:.4f}")
+        print(f"  Precision@{optimal_threshold:.2f}: {precision:.3f}")
+        print(f"  Recall@{optimal_threshold:.2f}: {recall:.3f}")
+        print(f"  F1 Score@{optimal_threshold:.2f}: {f1:.3f}")
 
       print(f"  FPS: {combined_metrics.fps:.2f}")
       print(f"  Inference Time: {combined_metrics.avg_inference_time * 1000:.2f} ms")
@@ -128,8 +136,3 @@ class Reporter:
       print(f"  True Positives: {combined_tp}")
       print(f"  False Positives: {combined_fp}")
       print(f"  False Negatives: {combined_fn}")
-
-      print("\n" + "=" * 50)
-      print(f"Optimal Threshold: {optimal_threshold:.5f}")
-      print(f"Optimal F1 Score: {f1:.5f}")
-      print("=" * 50)

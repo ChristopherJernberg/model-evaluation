@@ -29,5 +29,6 @@ class EvaluationConfig:
   output: OutputConfig = field(default_factory=OutputConfig)
 
   frame_limit: int | None = None
+  use_fixed_conf: bool = False
 
   benchmark: BenchmarkConfig = field(default_factory=BenchmarkConfig)

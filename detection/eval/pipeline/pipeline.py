@@ -153,8 +153,24 @@ class MetricsCalculationStage(EvaluationStage):
         context.combined_metrics.fps = context.overall_performance_metrics["fps"]
 
       if context.combined_metrics:
-        print("Finding optimal threshold...")
-        context.optimal_threshold, context.optimal_f1 = self.metrics_calculator.find_optimal_threshold(context.combined_metrics, metric="f1")
+        if context.config.use_fixed_conf:
+          context.optimal_threshold = context.config.model_config.conf_threshold
+
+          if context.combined_metrics.pr_curve_data and "thresholds" in context.combined_metrics.pr_curve_data:
+            thresholds = context.combined_metrics.pr_curve_data["thresholds"]
+            precisions = context.combined_metrics.pr_curve_data["precisions"]
+            recalls = context.combined_metrics.pr_curve_data["recalls"]
+
+            closest_idx = min(range(len(thresholds)), key=lambda i: abs(thresholds[i] - context.optimal_threshold))
+            p = precisions[closest_idx]
+            r = recalls[closest_idx]
+
+            context.optimal_f1 = 2 * (p * r) / (p + r) if (p + r) > 0 else 0
+
+          print(f"Using fixed confidence threshold: {context.optimal_threshold:.4f}")
+        else:
+          print("Finding optimal threshold...")
+          context.optimal_threshold, context.optimal_f1 = self.metrics_calculator.find_optimal_threshold(context.combined_metrics, metric="f1")
 
 
 class VisualizationStage(EvaluationStage):
@@ -237,7 +253,7 @@ class ReportingStage(EvaluationStage):
         )
         progress_bar.update(1)
 
-    self.reporter.print_summary(context.metrics, context.combined_metrics, context.optimal_threshold)
+    self.reporter.print_summary(context.metrics, context.combined_metrics, context.optimal_threshold, context.config.use_fixed_conf)
 
 
 class EvaluationPipeline:
@@ -319,10 +335,12 @@ class EvaluationPipeline:
       avg_fps = 0
       avg_inference_time = 0
 
+    threshold_field_name = "fixed_threshold" if self.config.use_fixed_conf else "optimal_threshold"
+
     return {
       "model_name": self.config.model_config.name,
       "metrics": self.context.combined_metrics,
-      "optimal_threshold": self.context.optimal_threshold,
+      threshold_field_name: self.context.optimal_threshold,
       "optimal_f1": self.context.optimal_f1,
       "optimal_precision": optimal_precision,
       "optimal_recall": optimal_recall,
