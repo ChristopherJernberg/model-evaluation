@@ -30,6 +30,8 @@ class PipelineContext:
     self.outputs: dict[str, Path] = {}
     self.all_gt_boxes: list[list[list[BoundingBox]]] = []
     self.all_pred_boxes: list[list[list[Detection]]] = []
+    self.video_performance_metrics: dict[int, dict] = {}
+    self.overall_performance_metrics: dict = {}
 
 
 class EvaluationStage(ABC):
@@ -85,6 +87,8 @@ class InferenceStage(EvaluationStage):
       video_gt_boxes = []
       video_pred_boxes = []
 
+      self.model_inference.inference_times = []
+
       for frame_idx, frame in self.data_loader.yield_frames(video_path, context.config.frame_limit):
         gt_boxes = []
         frame_gt = gt_df[gt_df["frame"] == frame_idx]
@@ -101,10 +105,20 @@ class InferenceStage(EvaluationStage):
       context.all_gt_boxes.append(video_gt_boxes)
       context.all_pred_boxes.append(video_pred_boxes)
 
+      context.video_performance_metrics[video_idx + 1] = {
+        "avg_inference_time": self.model_inference.get_avg_inference_time(),
+        "fps": self.model_inference.get_fps(),
+      }
+
       video_pbar.update(1)
 
     video_pbar.close()
     frame_pbar.close()
+
+    context.overall_performance_metrics = {
+      "avg_inference_time": sum(m["avg_inference_time"] for m in context.video_performance_metrics.values()) / len(context.video_performance_metrics),
+      "fps": sum(m["fps"] for m in context.video_performance_metrics.values()) / len(context.video_performance_metrics),
+    }
 
 
 class MetricsCalculationStage(EvaluationStage):
@@ -119,6 +133,12 @@ class MetricsCalculationStage(EvaluationStage):
         progress_bar.set_description(f"Video {video_idx + 1}/{len(context.all_gt_boxes)}")
 
         video_metrics = self.metrics_calculator.calculate_video_metrics(video_gt_boxes, video_pred_boxes, context.config.model_config.name)
+
+        if video_idx + 1 in context.video_performance_metrics:
+          perf_metrics = context.video_performance_metrics[video_idx + 1]
+          video_metrics.avg_inference_time = perf_metrics["avg_inference_time"]
+          video_metrics.fps = perf_metrics["fps"]
+
         context.metrics[video_idx + 1] = video_metrics
         progress_bar.update(1)
 
@@ -127,6 +147,10 @@ class MetricsCalculationStage(EvaluationStage):
       context.combined_metrics = EvaluationMetrics.create_combined_from_raw_data(
         context.all_gt_boxes, context.all_pred_boxes, model_name=context.config.model_config.name
       )
+
+      if context.combined_metrics and context.overall_performance_metrics:
+        context.combined_metrics.avg_inference_time = context.overall_performance_metrics["avg_inference_time"]
+        context.combined_metrics.fps = context.overall_performance_metrics["fps"]
 
       if context.combined_metrics:
         print("Finding optimal threshold...")
@@ -267,12 +291,48 @@ class EvaluationPipeline:
 
     self.context.execution_time = time.perf_counter() - self.context.start_time
 
+    mAP = 0
+    ap50 = 0
+    ap75 = 0
+    optimal_precision = 0
+    optimal_recall = 0
+
+    if self.context.combined_metrics and self.context.combined_metrics.pr_curve_data and "thresholds" in self.context.combined_metrics.pr_curve_data:
+      mAP = self.context.combined_metrics.mAP
+      ap50 = self.context.combined_metrics.ap50
+      ap75 = self.context.combined_metrics.ap75
+
+      thresholds = self.context.combined_metrics.pr_curve_data["thresholds"]
+      precisions = self.context.combined_metrics.pr_curve_data["precisions"]
+      recalls = self.context.combined_metrics.pr_curve_data["recalls"]
+
+      if len(thresholds) > 0:
+        threshold_idx = min(range(len(thresholds)), key=lambda i: abs(thresholds[i] - self.context.optimal_threshold))
+        optimal_precision = float(precisions[threshold_idx])
+        optimal_recall = float(recalls[threshold_idx])
+
+    # Get arithmetic means
+    if self.context.metrics:
+      avg_fps = sum(m.fps for m in self.context.metrics.values()) / len(self.context.metrics)
+      avg_inference_time = sum(m.avg_inference_time for m in self.context.metrics.values()) / len(self.context.metrics)
+    else:
+      avg_fps = 0
+      avg_inference_time = 0
+
     return {
       "model_name": self.config.model_config.name,
       "metrics": self.context.combined_metrics,
       "optimal_threshold": self.context.optimal_threshold,
       "optimal_f1": self.context.optimal_f1,
+      "optimal_precision": optimal_precision,
+      "optimal_recall": optimal_recall,
       "execution_time": self.context.execution_time,
       "device": self.config.model_config.device,
       "iou_threshold": self.config.model_config.iou_threshold,
+      "mAP": mAP,
+      "ap50": ap50,
+      "ap75": ap75,
+      "fps": avg_fps,
+      "avg_inference_time": avg_inference_time,
+      "categories": self.config.model_config.categories if hasattr(self.config.model_config, "categories") else [],
     }

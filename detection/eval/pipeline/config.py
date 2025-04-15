@@ -28,7 +28,6 @@ class EvaluationConfig:
   data_dir: Path
   output: OutputConfig = field(default_factory=OutputConfig)
 
-  num_workers: int | None = None
   frame_limit: int | None = None
 
   benchmark: BenchmarkConfig = field(default_factory=BenchmarkConfig)

@@ -75,7 +75,37 @@ class Reporter:
       print(f"  FPS: {metrics.fps:.2f}")
 
     if combined_metrics:
-      print("\nCombined Metrics:")
+      # Calculate arithmetic means
+      avg_metrics = {
+        "mAP": sum(m.mAP for m in results.values()) / len(results),
+        "ap50": sum(m.ap50 for m in results.values()) / len(results),
+        "ap75": sum(m.ap75 for m in results.values()) / len(results),
+        "fps": sum(m.fps for m in results.values()) / len(results),
+        "avg_inference_time": sum(m.avg_inference_time for m in results.values()) / len(results),
+        "true_positives": sum(m.frame_metrics.true_positives for m in results.values()) / len(results),
+        "false_positives": sum(m.frame_metrics.false_positives for m in results.values()) / len(results),
+        "false_negatives": sum(m.frame_metrics.false_negatives for m in results.values()) / len(results),
+      }
+
+      combined_tp = sum(m.frame_metrics.true_positives for m in results.values())
+      combined_fp = sum(m.frame_metrics.false_positives for m in results.values())
+      combined_fn = sum(m.frame_metrics.false_negatives for m in results.values())
+
+      print("\n" + "=" * 50)
+      print("SUMMARY STATISTICS")
+      print("=" * 50)
+
+      print("\nArithmetic Mean (average across videos):")
+      print(f"  mAP (IoU=0.5:0.95): {avg_metrics['mAP']:.4f}")
+      print(f"  AP@0.5: {avg_metrics['ap50']:.4f}")
+      print(f"  AP@0.75: {avg_metrics['ap75']:.4f}")
+      print(f"  Avg FPS: {avg_metrics['fps']:.2f}")
+      print(f"  Avg Inference Time: {avg_metrics['avg_inference_time'] * 1000:.2f} ms")
+      print(f"  Avg TP: {avg_metrics['true_positives']:.1f}")
+      print(f"  Avg FP: {avg_metrics['false_positives']:.1f}")
+      print(f"  Avg FN: {avg_metrics['false_negatives']:.1f}")
+
+      print("\nCombined Metrics (detection-weighted):")
       print(f"  mAP (IoU=0.5:0.95): {combined_metrics.mAP:.4f}")
       print(f"  AP@0.5: {combined_metrics.ap50:.4f}")
       print(f"  AP@0.75: {combined_metrics.ap75:.4f}")
@@ -91,12 +121,15 @@ class Reporter:
         print(f"  Recall@{optimal_threshold:.2f}: {recall:.4f}")
         print(f"  F1 Score@{optimal_threshold:.2f}: {f1:.4f}")
 
+      print(f"  FPS: {combined_metrics.fps:.2f}")
+      print(f"  Inference Time: {combined_metrics.avg_inference_time * 1000:.2f} ms")
+
       print("\nCombined Counts:")
-      combined_tp = sum(m.frame_metrics.true_positives for m in results.values())
-      combined_fp = sum(m.frame_metrics.false_positives for m in results.values())
-      combined_fn = sum(m.frame_metrics.false_negatives for m in results.values())
       print(f"  True Positives: {combined_tp}")
       print(f"  False Positives: {combined_fp}")
       print(f"  False Negatives: {combined_fn}")
 
-    print("\nOptimal Threshold:", optimal_threshold)
+      print("\n" + "=" * 50)
+      print(f"Optimal Threshold: {optimal_threshold:.5f}")
+      print(f"Optimal F1 Score: {f1:.5f}")
+      print("=" * 50)

@@ -45,7 +45,7 @@ def parse_args():
   # Benchmark options
   benchmark_group = parser.add_argument_group("Benchmark Options")
   benchmark_group.add_argument("--thresholds", nargs="+", type=float, help="Custom confidence thresholds for benchmarking")
-  benchmark_group.add_argument("--benchmark-frames", type=int, default=75, help="Number of frames to use for benchmarking")
+  benchmark_group.add_argument("--benchmark-frames", type=int, default=100, help="Number of frames to use for benchmarking")
   benchmark_group.add_argument("--benchmark-video", help="Specific video file to use for benchmarking")
 
   # Output arguments
@@ -56,9 +56,6 @@ def parse_args():
   parser.add_argument("--save-reports", action="store_true", help="Save benchmark reports")
   parser.add_argument("--save-all", action="store_true", help="Save all outputs")
   parser.add_argument("--save-none", action="store_true", help="Don't save any outputs")
-
-  # Processing arguments
-  parser.add_argument("--workers", type=int, default=None, help="Number of worker processes")
 
   return parser.parse_args()
 
@@ -73,7 +70,6 @@ def evaluate_single_model(
   save_plots: bool,
   save_metrics: bool,
   save_reports: bool,
-  workers: int = None,
   start_time: float = None,
 ):
   """Evaluate a single model with the given parameters"""
@@ -87,7 +83,7 @@ def evaluate_single_model(
   )
 
   output_config = OutputConfig(base_dir=Path(output_dir), save_videos=save_videos, save_plots=save_plots, save_metrics=save_metrics, save_reports=save_reports)
-  config = EvaluationConfig(model_config=model_config, data_dir=Path("testdata") / dataset, output=output_config, num_workers=workers)
+  config = EvaluationConfig(model_config=model_config, data_dir=Path("testdata") / dataset, output=output_config)
 
   print(f"\nEvaluating model: {model_name}")
   print(f"Device: {device}")
@@ -110,8 +106,15 @@ def evaluate_single_model(
     seconds = elapsed_time % 60
     print(f"\nModel execution time: {minutes} minutes and {seconds:.2f} seconds")
 
-  print(f"\nOptimal threshold: {model_results.get('optimal_threshold', 0.0):.3f}")
-  print(f"Optimal F1 score: {model_results.get('optimal_f1', 0.0):.3f}")
+  print(f"\nOptimal threshold: {model_results.get('optimal_threshold', 0.0):.4f}")
+  print(f"Optimal F1 score: {model_results.get('optimal_f1', 0.0):.4f}")
+  print(f"Precision at optimal threshold: {model_results.get('optimal_precision', 0.0):.4f}")
+  print(f"Recall at optimal threshold: {model_results.get('optimal_recall', 0.0):.4f}")
+  print(f"mAP: {model_results.get('mAP', 0.0):.4f}")
+  print(f"AP@0.5: {model_results.get('ap50', 0.0):.4f}")
+  print(f"AP@0.75: {model_results.get('ap75', 0.0):.4f}")
+  print(f"FPS: {model_results.get('fps', 0.0):.2f}")
+  print(f"Avg inference time: {model_results.get('avg_inference_time', 0.0) * 1000:.2f} ms")
 
   return model_results
 
@@ -196,7 +199,7 @@ def run_benchmark(
         cap = cv2.VideoCapture(benchmark_video)
         frame_times = []
 
-        for i in range(benchmark_frames):
+        for _ in range(benchmark_frames):
           ret, frame = cap.read()
           if not ret:
             break
@@ -386,7 +389,6 @@ def main():
         save_plots=args.save_plots,
         save_metrics=args.save_metrics,
         save_reports=args.save_reports,
-        workers=args.workers,
         start_time=start_time,
       )
       results.append(model_result)

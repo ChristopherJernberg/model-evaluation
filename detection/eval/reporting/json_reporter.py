@@ -96,7 +96,6 @@ class JsonReporter:
           "f1_score": combined_f1,
         }
 
-    # Add per-video results
     for video_id, metrics in results.items():
       if "per_video_results" in benchmark_results:
         per_video_results = benchmark_results["per_video_results"]
@@ -116,7 +115,6 @@ class JsonReporter:
             "pr_curve_file": f"video_{video_id}_pr_data.json",
           }
 
-      # Save PR curve data for each video
       pr_data = {
         "precisions": metrics.pr_curve_data["precisions"].tolist(),
         "recalls": metrics.pr_curve_data["recalls"].tolist(),
@@ -125,6 +123,5 @@ class JsonReporter:
       with open(f"{self.output_dir}/video_{video_id}_pr_data.json", 'w') as f:
         json.dump(pr_data, f, cls=NumPyEncoder)
 
-    # Save combined benchmark results
     with open(f"{self.output_dir}/benchmark_results.json", 'w') as f:
       json.dump(benchmark_results, f, indent=2, cls=NumPyEncoder)

@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 import torch
 
@@ -10,6 +12,7 @@ class ModelInference:
     self.model_config = model_config
     self.model = None
     self.original_conf = None
+    self.inference_times = []
 
   def setup(self):
     if self.model is None:
@@ -20,6 +23,8 @@ class ModelInference:
 
   def detect(self, frame: np.ndarray) -> list[Detection]:
     self.setup()
+
+    start_time = time.perf_counter()
 
     # Convert numpy array to tensor if needed
     if isinstance(frame, np.ndarray) and hasattr(self.model, 'detect') and 'torch.Tensor' in str(self.model.detect.__annotations__.get('image', '')):
@@ -35,11 +40,30 @@ class ModelInference:
           wh = detections[:, 2:4].cpu().numpy() - xy
           conf = detections[:, 4].cpu().numpy() if detections.shape[1] > 4 else np.ones(len(detections))
 
-          return [(float(x), float(y), float(w), float(h), float(c)) for (x, y), (w, h), c in zip(xy, wh, conf)]
-        return []
-      return detections
+          result = [(float(x), float(y), float(w), float(h), float(c)) for (x, y), (w, h), c in zip(xy, wh, conf)]
+        else:
+          result = []
+      else:
+        result = detections
     else:
-      return self.model.detect(frame)
+      result = self.model.detect(frame)
+
+    end_time = time.perf_counter()
+    self.inference_times.append(end_time - start_time)
+
+    return result
+
+  def get_avg_inference_time(self) -> float:
+    """Get the average inference time in seconds"""
+    if not self.inference_times:
+      return 0.0
+    return float(np.mean(self.inference_times))
+
+  def get_fps(self) -> float:
+    avg_time = self.get_avg_inference_time()
+    if avg_time <= 0:
+      return 0.0
+    return float(1.0 / avg_time)
 
   def set_confidence_threshold(self, threshold: float):
     """
