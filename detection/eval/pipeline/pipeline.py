@@ -239,20 +239,17 @@ class ReportingStage(EvaluationStage):
 
       if context.config.output.save_reports:
         progress_bar.set_description("Generating reports")
-        self.reporter.generate_report(
-          context.metrics,
-          context.combined_metrics,
-          {
-            "model_name": context.config.model_config.name,
-            "conf_threshold": context.optimal_threshold,
-            "iou_threshold": context.config.model_config.iou_threshold,
-            "device": context.config.model_config.device,
-            "num_videos": len(context.metrics),
-            "test_date": time.strftime("%Y-%m-%d"),
-            "test_timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "total_processing_time_seconds": context.execution_time,
-          },
-        )
+        metadata = {
+          "model_name": context.config.model_config.name,
+          "conf_threshold": context.optimal_threshold,
+          "iou_threshold": context.config.model_config.iou_threshold,
+          "device": context.config.model_config.device,
+          "num_videos": len(context.metrics),
+          "test_date": time.strftime("%Y-%m-%d"),
+          "test_timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+          "total_processing_time_seconds": context.execution_time,
+        }
+        self.reporter.generate_report(context.metrics, context.combined_metrics, metadata)
         progress_bar.update(1)
 
     self.reporter.print_summary(context.metrics, context.combined_metrics, context.optimal_threshold, context.config.use_fixed_conf)
@@ -262,6 +259,8 @@ class EvaluationPipeline:
   """Main pipeline orchestrator"""
 
   def __init__(self, config: EvaluationConfig):
+    config.validate()
+
     self.config = config
     self.context = PipelineContext(config)
 
@@ -271,7 +270,10 @@ class EvaluationPipeline:
     self.model_inference = ModelInference(config.model_config)
     self.metrics_calculator = MetricsCalculator()
     self.visualizer = Visualizer(self.context.outputs)
-    self.reporter = Reporter(self.context.outputs)
+
+    dataset_name = config.data_dir.name
+
+    self.reporter = Reporter(output_dirs=self.context.outputs, model_config=config.model_config, dataset_name=dataset_name)
 
     self.stages = [
       DataLoadingStage(self.data_loader),

@@ -32,3 +32,35 @@ class EvaluationConfig:
   use_fixed_conf: bool = False
 
   benchmark: BenchmarkConfig = field(default_factory=BenchmarkConfig)
+
+  def validate(self):
+    """Validate the complete configuration"""
+    if not 0 <= self.model_config.iou_threshold <= 1:
+      raise ValueError(f"IoU threshold must be between 0 and 1, got {self.model_config.iou_threshold}")
+
+    if not 0 <= self.model_config.conf_threshold <= 1:
+      raise ValueError(f"Confidence threshold must be between 0 and 1, got {self.model_config.conf_threshold}")
+
+    if not self.data_dir.exists():
+      raise FileNotFoundError(f"Data directory does not exist: {self.data_dir}")
+
+    self.output.base_dir.mkdir(parents=True, exist_ok=True)
+
+    valid_devices = ["cuda", "cpu", "mps"]
+    if self.model_config.device not in valid_devices:
+      raise ValueError(f"Device must be one of {valid_devices}, got {self.model_config.device}")
+
+    if not self.model_config.name:
+      raise ValueError("Model name cannot be empty")
+
+    if self.benchmark.enabled:
+      if self.benchmark.num_frames <= 0:
+        raise ValueError(f"Benchmark frames must be positive, got {self.benchmark.num_frames}")
+
+      if not self.benchmark.thresholds:
+        raise ValueError("Benchmark thresholds list cannot be empty when benchmarking is enabled")
+
+      if self.benchmark.video_path and not self.benchmark.video_path.exists():
+        raise FileNotFoundError(f"Benchmark video file does not exist: {self.benchmark.video_path}")
+
+    return True

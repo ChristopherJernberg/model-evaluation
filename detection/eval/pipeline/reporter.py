@@ -8,11 +8,14 @@ from detection.eval.reporting import ConsoleReporter, JsonReporter, MarkdownRepo
 class Reporter:
   """Component for generating reports"""
 
-  def __init__(self, output_dirs: dict[str, Path]):
+  def __init__(self, output_dirs: dict[str, Path], model_config: ModelConfig | None = None, dataset_name: str | None = None):
     self.output_dirs = output_dirs
     self.json_reporter = None
     self.markdown_reporter = None
     self.console_reporter = ConsoleReporter()
+
+    self.model_config = model_config
+    self.dataset_name = dataset_name
 
     if "metrics" in output_dirs:
       self.json_reporter = JsonReporter(output_dirs["metrics"])
@@ -40,5 +43,15 @@ class Reporter:
     self, results: dict[int, EvaluationMetrics], combined_metrics: EvaluationMetrics | None, optimal_threshold: float, is_fixed_threshold: bool = False
   ) -> None:
     """Print summary of results to console"""
+
+    dataset_name = self.dataset_name or "unknown"
+
     print("\n")
-    self.console_reporter.print_summary(results, combined_metrics, optimal_threshold, is_fixed_threshold)
+    self.console_reporter.print_summary(
+      results,
+      combined_metrics,
+      conf_threshold=optimal_threshold,
+      is_fixed_threshold=is_fixed_threshold,
+      dataset_name=dataset_name,
+      model_config=self.model_config,
+    )

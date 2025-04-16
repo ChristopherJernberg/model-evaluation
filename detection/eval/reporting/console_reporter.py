@@ -1,5 +1,7 @@
 import numpy as np
 
+from detection.core.interfaces import ModelConfig
+
 
 class ConsoleReporter:
   """Reporter for console output of evaluation results"""
@@ -141,7 +143,7 @@ class ConsoleReporter:
     conf_threshold: float = 0.0,
     is_fixed_threshold: bool = False,
     dataset_name: str = "unknown",
-    iou_threshold: float = 0.5,
+    model_config: ModelConfig | None = None,
   ) -> None:
     """
     Print summary of results to console
@@ -149,10 +151,10 @@ class ConsoleReporter:
     Args:
         results: Dictionary of evaluation metrics per video
         combined_metrics: Combined metrics across all videos
-        conf_threshold: Confidence threshold used for evaluation
+        conf_threshold: Confidence threshold used for evaluation (overrides model_config.conf_threshold if provided)
         is_fixed_threshold: Whether threshold was fixed or optimized
         dataset_name: Name of the dataset used for evaluation
-        iou_threshold: IoU threshold used for evaluation
+        model_config: Complete model configuration object
     """
     try:
       if not results:
@@ -160,19 +162,24 @@ class ConsoleReporter:
         return
 
       threshold_type = "Fixed" if is_fixed_threshold else "Optimal"
-      model_name = "unknown"
-      device = "unknown"
 
-      if combined_metrics:
-        model_name = combined_metrics.model_name
-        device = getattr(combined_metrics, 'device', 'unknown')
+      if model_config:
+        model_name = model_config.name
+        device = model_config.device
+        iou_threshold = model_config.iou_threshold
+
+        if is_fixed_threshold and conf_threshold == 0.0:
+          conf_threshold = model_config.conf_threshold
+
+      iou_threshold_str = self._format_value(iou_threshold)
+      conf_threshold_str = self._format_value(conf_threshold)
 
       print(self._create_header("EVALUATION RESULTS", 80))
       print(f"\nMODEL: {model_name}")
       print(f"DEVICE: {device}")
       print(f"DATASET: {dataset_name}")
-      print(f"IOU THRESHOLD: {self._format_value(iou_threshold)}")
-      print(f"CONFIDENCE THRESHOLD: {self._format_value(conf_threshold)} ({threshold_type})")
+      print(f"IOU THRESHOLD: {iou_threshold_str}")
+      print(f"CONFIDENCE THRESHOLD: {conf_threshold_str} ({threshold_type})")
 
       if results:
         # Generate per-video metrics table
