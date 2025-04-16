@@ -75,7 +75,6 @@ def evaluate_single_model(
   conf_threshold: float | None = None,
 ):
   """Evaluate a single model with the given parameters"""
-  model_start_time = time.perf_counter() if start_time is None else start_time
 
   initial_conf = conf_threshold if conf_threshold is not None else 0.0
 
@@ -103,35 +102,6 @@ def evaluate_single_model(
 
   categories = ModelRegistry.get_model_categories(model_name)
   model_results["categories"] = categories
-
-  end_time = time.perf_counter()
-  elapsed_time = end_time - model_start_time
-
-  if elapsed_time < 60:
-    print(f"\nModel execution time: {elapsed_time:.2f} seconds")
-  else:
-    minutes = int(elapsed_time // 60)
-    seconds = elapsed_time % 60
-    print(f"\nModel execution time: {minutes} minutes and {seconds:.2f} seconds")
-
-  if conf_threshold is not None:
-    threshold_type = "Fixed"
-    threshold_value = conf_threshold
-  else:
-    threshold_type = "Optimal"
-    threshold_value = model_results.get('optimal_threshold', 0.0)
-
-  print(f"\n{threshold_type} threshold: {threshold_value:.4f}")
-  print(f"F1 score: {model_results.get('optimal_f1', 0.0):.4f}")
-  print(f"Precision: {model_results.get('optimal_precision', 0.0):.4f}")
-  print(f"Recall: {model_results.get('optimal_recall', 0.0):.4f}")
-  print(f"mAP: {model_results.get('mAP', 0.0):.4f}")
-  print(f"AP@0.5: {model_results.get('ap50', 0.0):.4f}")
-  print(f"AP@0.75: {model_results.get('ap75', 0.0):.4f}")
-  print(f"FPS: {model_results.get('fps', 0.0):.2f}")
-  print(f"Avg inference time: {model_results.get('avg_inference_time', 0.0) * 1000:.2f} ms")
-
-  return model_results
 
 
 def run_benchmark(

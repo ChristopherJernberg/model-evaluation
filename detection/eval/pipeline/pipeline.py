@@ -51,7 +51,7 @@ class DataLoadingStage(EvaluationStage):
   def process(self, context: PipelineContext) -> None:
     context.video_paths = self.data_loader.get_video_paths()
 
-    with tqdm(total=len(context.video_paths), desc="Loading video metadata", position=1) as progress_bar:
+    with tqdm(total=len(context.video_paths), desc="Loading video metadata", position=1, leave=False) as progress_bar:
       for video_path in context.video_paths:
         context.video_metadata[video_path.stem] = self.data_loader.get_video_metadata(video_path)
         progress_bar.update(1)
@@ -76,8 +76,8 @@ class InferenceStage(EvaluationStage):
       total_frames += max_frames
 
     # Process each video
-    video_pbar = tqdm(total=len(context.video_paths), desc="Processing videos", position=1)
-    frame_pbar = tqdm(total=total_frames, desc="Processing frames", position=2)
+    video_pbar = tqdm(total=len(context.video_paths), desc="Processing videos", position=1, leave=False)
+    frame_pbar = tqdm(total=total_frames, desc="Processing frames", position=2, leave=False)
 
     for video_idx, video_path in enumerate(context.video_paths):
       video_pbar.set_description(f"Video {video_idx + 1}/{len(context.video_paths)}: {video_path.stem}")
@@ -128,11 +128,12 @@ class MetricsCalculationStage(EvaluationStage):
     self.metrics_calculator = metrics_calculator
 
   def process(self, context: PipelineContext) -> None:
-    with tqdm(total=len(context.all_gt_boxes), desc="Calculating metrics", position=1) as progress_bar:
+    with tqdm(total=len(context.all_gt_boxes), desc="Calculating metrics", position=1, leave=False) as progress_bar:
       for video_idx, (video_gt_boxes, video_pred_boxes) in enumerate(zip(context.all_gt_boxes, context.all_pred_boxes)):
         progress_bar.set_description(f"Video {video_idx + 1}/{len(context.all_gt_boxes)}")
 
         video_metrics = self.metrics_calculator.calculate_video_metrics(video_gt_boxes, video_pred_boxes, context.config.model_config.name)
+        video_metrics.device = context.config.model_config.device
 
         if video_idx + 1 in context.video_performance_metrics:
           perf_metrics = context.video_performance_metrics[video_idx + 1]
@@ -143,10 +144,11 @@ class MetricsCalculationStage(EvaluationStage):
         progress_bar.update(1)
 
     if context.metrics:
-      print("Calculating combined metrics...")
+      tqdm.write("Calculating combined metrics...")
       context.combined_metrics = EvaluationMetrics.create_combined_from_raw_data(
         context.all_gt_boxes, context.all_pred_boxes, model_name=context.config.model_config.name
       )
+      context.combined_metrics.device = context.config.model_config.device
 
       if context.combined_metrics and context.overall_performance_metrics:
         context.combined_metrics.avg_inference_time = context.overall_performance_metrics["avg_inference_time"]
@@ -167,9 +169,9 @@ class MetricsCalculationStage(EvaluationStage):
 
             context.optimal_f1 = 2 * (p * r) / (p + r) if (p + r) > 0 else 0
 
-          print(f"Using fixed confidence threshold: {context.optimal_threshold:.4f}")
+          tqdm.write(f"Using fixed confidence threshold: {context.optimal_threshold:.4f}")
         else:
-          print("Finding optimal threshold...")
+          tqdm.write("Finding optimal threshold...")
           context.optimal_threshold, context.optimal_f1 = self.metrics_calculator.find_optimal_threshold(context.combined_metrics, metric="f1")
 
 
@@ -184,7 +186,7 @@ class VisualizationStage(EvaluationStage):
       return
 
     if context.config.output.save_videos:
-      with tqdm(total=len(context.video_paths), desc="Creating video visualizations", position=1) as progress_bar:
+      with tqdm(total=len(context.video_paths), desc="Creating video visualizations", position=1, leave=False) as progress_bar:
         for video_idx, video_path in enumerate(context.video_paths):
           progress_bar.set_description(f"Visualizing video {video_idx + 1}/{len(context.video_paths)}")
 
@@ -197,7 +199,7 @@ class VisualizationStage(EvaluationStage):
           progress_bar.update(1)
 
     if context.config.output.save_plots and context.combined_metrics:
-      with tqdm(total=len(context.metrics) + 2, desc="Creating plots", position=1) as progress_bar:
+      with tqdm(total=len(context.metrics) + 2, desc="Creating plots", position=1, leave=False) as progress_bar:
         progress_bar.set_description("Creating combined PR curve")
         self.visualizer.create_pr_curve(context.combined_metrics, context.optimal_threshold)
         progress_bar.update(1)
@@ -229,7 +231,7 @@ class ReportingStage(EvaluationStage):
     if context.config.output.save_reports:
       tasks.append("Generating reports")
 
-    with tqdm(total=len(tasks), desc="Reporting", position=1) as progress_bar:
+    with tqdm(total=len(tasks), desc="Reporting", position=1, leave=False) as progress_bar:
       if context.config.output.save_metrics:
         progress_bar.set_description("Saving metrics")
         self.reporter.save_metrics(context.metrics, context.combined_metrics, context.config.model_config, context.optimal_threshold)
@@ -299,7 +301,7 @@ class EvaluationPipeline:
     """Run the complete pipeline"""
     stage_names = ["Loading data", "Running inference", "Calculating metrics", "Creating visualizations", "Generating reports"]
 
-    with tqdm(total=len(self.stages), desc="Pipeline progress", position=0) as progress_bar:
+    with tqdm(total=len(self.stages), desc="Pipeline progress", position=0, leave=False) as progress_bar:
       for stage, name in zip(self.stages, stage_names):
         progress_bar.set_description(f"Stage: {name}")
         stage.process(self.context)
