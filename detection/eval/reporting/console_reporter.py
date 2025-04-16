@@ -108,18 +108,52 @@ class ConsoleReporter:
     return "\n".join(table)
 
   def _format_value(self, value, format_spec=None):
-    """Format a value according to its type and format specification."""
-    if format_spec is None:
-      if isinstance(value, float):
-        return f"{value:.3f}"
+    try:
+      if hasattr(value, 'item'):
+        value = value.item()
+
+      if format_spec is None:
+        if isinstance(value, float):
+          formatted = f"{value:.3f}"
+          if '.' in formatted:
+            formatted = formatted.rstrip('0').rstrip('.') if formatted.rstrip('0') != formatted.rstrip('0').rstrip('.') else formatted.rstrip('0')
+          return formatted
+        return str(value)
+
+      if isinstance(value, (int, float)):
+        if isinstance(value, float):
+          if 'f' in format_spec:
+            precision = int(format_spec.strip('.').strip('f'))
+            formatted = f"{value:.{precision}f}"
+            if '.' in formatted:
+              formatted = formatted.rstrip('0').rstrip('.') if formatted.rstrip('0') != formatted.rstrip('0').rstrip('.') else formatted.rstrip('0')
+            return formatted
+        return f"{value:{format_spec}}"
+      return str(value)
+    except Exception:
+      # Fallback to string representation in case of errors
       return str(value)
 
-    if isinstance(value, (int, float)):
-      return f"{value:{format_spec}}"
-    return str(value)
+  def print_summary(
+    self,
+    results: dict,
+    combined_metrics=None,
+    conf_threshold: float = 0.0,
+    is_fixed_threshold: bool = False,
+    dataset_name: str = "unknown",
+    iou_threshold: float = 0.5,
+  ) -> None:
+    """
+    Print summary of results to console
 
-  def print_summary(self, results: dict, combined_metrics=None, optimal_threshold: float = 0.0, is_fixed_threshold: bool = False) -> None:
-    """Print summary of results to console"""
+    Args:
+        results: Dictionary of evaluation metrics per video
+        combined_metrics: Combined metrics across all videos
+        conf_threshold: Confidence threshold used for evaluation
+        is_fixed_threshold: Whether threshold was fixed or optimized
+        dataset_name: Name of the dataset used for evaluation
+        iou_threshold: IoU threshold used for evaluation
+    """
     try:
       if not results:
         print("No results to display")
@@ -136,7 +170,9 @@ class ConsoleReporter:
       print(self._create_header("EVALUATION RESULTS", 80))
       print(f"\nMODEL: {model_name}")
       print(f"DEVICE: {device}")
-      print(f"THRESHOLD: {optimal_threshold:.3f} ({threshold_type})")
+      print(f"DATASET: {dataset_name}")
+      print(f"IOU THRESHOLD: {self._format_value(iou_threshold)}")
+      print(f"CONFIDENCE THRESHOLD: {self._format_value(conf_threshold)} ({threshold_type})")
 
       if results:
         # Generate per-video metrics table
@@ -171,7 +207,7 @@ class ConsoleReporter:
               recalls = metrics.pr_curve_data.get("recalls", [])
 
               if len(thresholds) > 0 and len(precisions) > 0 and len(recalls) > 0:
-                closest_indices = np.argsort(np.abs(np.array(thresholds) - optimal_threshold))
+                closest_indices = np.argsort(np.abs(np.array(thresholds) - conf_threshold))
                 if len(closest_indices) > 0:
                   threshold_idx = closest_indices[0]
 
@@ -244,7 +280,7 @@ class ConsoleReporter:
           recalls = combined_metrics.pr_curve_data["recalls"]
 
           if len(thresholds) > 0 and len(precisions) == len(thresholds) and len(recalls) == len(thresholds):
-            threshold_idx = min(range(len(thresholds)), key=lambda i: abs(thresholds[i] - optimal_threshold))
+            threshold_idx = min(range(len(thresholds)), key=lambda i: abs(thresholds[i] - conf_threshold))
             if 0 <= threshold_idx < len(precisions):
               combined_precision = precisions[threshold_idx]
               combined_recall = recalls[threshold_idx]
