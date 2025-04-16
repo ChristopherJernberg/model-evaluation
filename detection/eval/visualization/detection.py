@@ -87,7 +87,7 @@ class DetectionVisualizer:
       w, h = int(box[2]), int(box[3])
       conf = box[4] if len(box) > 4 else None
 
-      is_matched = matched_ious is not None and i in matched_ious
+      is_matched = matched_ious is not None and i < len(matched_ious.values)
       box_color = GREEN if is_matched else RED
 
       cv2.rectangle(frame_copy, (x1, y1), (x1 + w, y1 + h), box_color, BOX_THICKNESS)
@@ -97,7 +97,8 @@ class DetectionVisualizer:
         text_parts.append(f"conf: {conf:.2f}")
 
       if is_matched and matched_ious is not None:
-        text_parts.append(f"IoU: {matched_ious[i]:.2f}")
+        iou_value = matched_ious.values[i]
+        text_parts.append(f"IoU: {iou_value:.2f}")
         text_parts.append("TP")
       else:
         text_parts.append("FP")

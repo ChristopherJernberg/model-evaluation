@@ -70,11 +70,10 @@ class RTDetr(RTDetrBase):
 
   SUPPORTED_MODELS = {
     "rtdetr-r18": {"path": "PekingU/rtdetr_r18vd", "categories": ["small", "real-time"]},
-    "rtdetr-18c": {"path": "PekingU/rtdetr_r18vd_coco_o365", "categories": ["small", "real-time"]},
+    "rtdetr-r18c": {"path": "PekingU/rtdetr_r18vd_coco_o365", "categories": ["small", "real-time"]},
     "rtdetr-r34": {"path": "PekingU/rtdetr_r34vd", "categories": ["medium", "real-time"]},
-    "rtdetr-34c": {"path": "PekingU/rtdetr_r34vd_coco_o365", "categories": ["medium", "real-time"]},
     "rtdetr-r50": {"path": "PekingU/rtdetr_r50vd", "categories": ["large"]},
-    "rtdetr-50c": {"path": "PekingU/rtdetr_r50vd_coco_o365", "categories": ["large"]},
+    "rtdetr-r50c": {"path": "PekingU/rtdetr_r50vd_coco_o365", "categories": ["large"]},
     "rtdetr-r101": {"path": "PekingU/rtdetr_r101vd", "categories": ["xlarge"]},
     "rtdetr-101c": {"path": "PekingU/rtdetr_r101vd_coco_o365", "categories": ["xlarge"]},
   }

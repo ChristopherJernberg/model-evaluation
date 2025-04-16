@@ -6,6 +6,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import argparse
 import time
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
@@ -15,8 +16,11 @@ from detection.core.registry import ModelRegistry
 from detection.eval.pipeline.config import EvaluationConfig, OutputConfig, ThresholdConfig
 from detection.eval.pipeline.pipeline import EvaluationPipeline
 
+DEFAULT_BENCHMARK_THRESHOLDS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
-def parse_args():
+
+def parse_args() -> argparse.Namespace:
+  """Parse command line arguments for model evaluation"""
   parser = argparse.ArgumentParser(description="Evaluate and compare object detection models")
 
   parser.add_argument("--benchmark-only", "-b", action="store_true", help="Run speed benchmark without evaluation")
@@ -25,7 +29,7 @@ def parse_args():
   model_group = parser.add_mutually_exclusive_group(required=True)
   model_group.add_argument("--model", "-m", help="Specific model name to evaluate")
   model_group.add_argument("--models", "-ms", nargs="+", help="Multiple specific model names to evaluate")
-  model_group.add_argument("--category", "-c", help="Category of models to evaluate (models matching ANY specified category)")
+  model_group.add_argument("--categories", "-c", nargs="+", help="Categories of models to evaluate (models matching ANY specified categories)")
   model_group.add_argument("--all-categories", "-ac", nargs="+", help="Categories of models to evaluate (models matching ALL specified categories)")
   model_group.add_argument("--all", "-a", action="store_true", help="Evaluate all available models")
   model_group.add_argument("--list-categories", "-lc", action="store_true", help="List all available categories")
@@ -33,31 +37,34 @@ def parse_args():
   model_group.add_argument("--list-models-in-category", "-lmc", help="List all models in a specific category")
   model_group.add_argument("--list-datasets", "-ld", action="store_true", help="List all available datasets in testdata directory")
 
-  # Dataset arguments
-  parser.add_argument("--dataset", "-d", default="evanette001", help="Dataset name to use")
+  # Dataset options
+  dataset_group = parser.add_argument_group("Dataset Options")
+  dataset_group.add_argument("--dataset", "-d", default="evanette001", help="Dataset name to use for evaluation")
 
-  # Device arguments
-  parser.add_argument("--device", default="mps", choices=["mps", "cuda", "cpu"], help="Device for inference")
+  # Device options
+  device_group = parser.add_argument_group("Device Options")
+  device_group.add_argument("--device", "-dv", default="mps", choices=["mps", "cuda", "cpu"], help="Device to run inference on (mps, cuda, cpu)")
 
   # Threshold arguments
-  parser.add_argument("--iou", type=float, default=0.45, help="IoU threshold")
-  parser.add_argument("--conf", type=float, help="Custom confidence threshold (sets threshold mode to 'fixed')")
-  parser.add_argument("--threshold-mode", choices=["auto", "fixed"], default="auto", help="Threshold handling mode")
+  threshold_group = parser.add_argument_group("Threshold Options")
+  threshold_group.add_argument("--iou", "-iou", type=float, default=0.45, help="IoU threshold for evaluation")
+  threshold_group.add_argument("--conf", "-ct", type=float, help="Custom confidence threshold (sets threshold mode to 'fixed')")
 
   # Benchmark options
   benchmark_group = parser.add_argument_group("Benchmark Options")
-  benchmark_group.add_argument("--thresholds", nargs="+", type=float, help="Custom confidence thresholds for benchmarking")
-  benchmark_group.add_argument("--benchmark-frames", type=int, default=100, help="Number of frames to use for benchmarking")
-  benchmark_group.add_argument("--benchmark-video", help="Specific video file to use for benchmarking")
+  benchmark_group.add_argument("--thresholds", "-t", nargs="+", type=float, help="Custom confidence thresholds for benchmarking")
+  benchmark_group.add_argument("--benchmark-frames", "-bf", type=int, default=100, help="Number of frames to use for benchmarking")
+  benchmark_group.add_argument("--benchmark-video", "-bv", help="Specific video file to use for benchmarking")
 
-  # Output arguments
-  parser.add_argument("--output-dir", default="results", help="Output directory")
-  parser.add_argument("--save-videos", action="store_true", help="Save visualization videos")
-  parser.add_argument("--save-plots", action="store_true", help="Save PR curves and plots")
-  parser.add_argument("--save-metrics", action="store_true", help="Save metrics JSON files")
-  parser.add_argument("--save-reports", action="store_true", help="Save benchmark reports")
-  parser.add_argument("--save-all", action="store_true", help="Save all outputs")
-  parser.add_argument("--save-none", action="store_true", help="Don't save any outputs")
+  # Output control options
+  output_group = parser.add_argument_group("Output Options")
+  output_group.add_argument("--output-dir", "-od", default="results", help="Base directory for saving results")
+  output_group.add_argument("--save-all", "-sa", action="store_true", help="Save all outputs (videos, plots, metrics, reports)")
+  output_group.add_argument("--save-none", "-sn", action="store_true", help="Don't save any outputs, just display results")
+  output_group.add_argument("--save-videos", "-sv", action="store_true", help="Save comparison videos")
+  output_group.add_argument("--save-plots", "-sp", action="store_true", help="Save PR curve and speed plots")
+  output_group.add_argument("--save-metrics", "-sm", action="store_true", help="Save metrics JSON files")
+  output_group.add_argument("--save-reports", "-sr", action="store_true", help="Save benchmark reports")
 
   return parser.parse_args()
 
@@ -72,11 +79,27 @@ def evaluate_single_model(
   save_plots: bool,
   save_metrics: bool,
   save_reports: bool,
-  start_time: float | None = None,
   conf_threshold: float | None = None,
-):
-  """Evaluate a single model with the given parameters"""
+) -> dict[str, Any]:
+  """
+  Evaluate a single model with the given parameters
 
+  Args:
+      model_name: Name of the model to evaluate
+      device: Device to run inference on (mps, cuda, cpu)
+      dataset: Dataset name to use for evaluation
+      iou_threshold: IoU threshold for evaluation
+      output_dir: Base directory for saving results
+      save_videos: Whether to save visualization videos
+      save_plots: Whether to save PR curves and plots
+      save_metrics: Whether to save metrics JSON files
+      save_reports: Whether to save benchmark reports
+      start_time: Optional start time for timing
+      conf_threshold: Optional fixed confidence threshold
+
+  Returns:
+      Dictionary containing evaluation results
+  """
   initial_conf = conf_threshold if conf_threshold is not None else 0.0
 
   model_config = ModelConfig(
@@ -105,21 +128,38 @@ def evaluate_single_model(
   categories = ModelRegistry.get_model_categories(model_name)
   model_results["categories"] = categories
 
+  return model_results
+
 
 def run_benchmark(
-  models_to_evaluate: list[str],
+  models_to_process: list[str],
   device: str,
   dataset: str,
   output_dir: str,
-  thresholds: list[float] = None,
+  thresholds: list[float] | None = None,
   benchmark_frames: int = 75,
-  benchmark_video: str = None,
+  benchmark_video: str | None = None,
   save_plots: bool = True,
-):
-  """Run speed benchmark for the specified models"""
-  print(f"Running speed benchmark for {len(models_to_evaluate)} models:")
+) -> dict[str, dict[str, Any]]:
+  """
+  Run speed benchmark for the specified models
 
-  for model in models_to_evaluate:
+  Args:
+      models_to_process: List of model names to benchmark
+      device: Device to run inference on (mps, cuda, cpu)
+      dataset: Dataset name to use for test videos
+      output_dir: Base directory for saving results
+      thresholds: Optional list of confidence thresholds to test
+      benchmark_frames: Number of frames to use for benchmarking
+      benchmark_video: Optional specific video file to use
+      save_plots: Whether to save speed plots
+
+  Returns:
+      Dictionary of benchmark results by model
+  """
+  print(f"Running speed benchmark for {len(models_to_process)} models:")
+
+  for model in models_to_process:
     print(f"  - {model}")
 
   print("\nBenchmark configuration:")
@@ -139,13 +179,13 @@ def run_benchmark(
 
   if not benchmark_video or not Path(benchmark_video).exists():
     print("Error: No valid video found for benchmarking.")
-    return
+    return {}
 
   print(f"Using video: {Path(benchmark_video).name}\n")
 
-  benchmark_results = {}
+  benchmark_results: dict[str, dict[str, Any]] = {}
 
-  for model_name in models_to_evaluate:
+  for model_name in models_to_process:
     try:
       plots_dir = None
       if save_plots:
@@ -173,18 +213,19 @@ def run_benchmark(
         print(f"Error: Could not read frame from {benchmark_video}")
         continue
 
+      # Warm-up runs
       for _ in range(10):
         _ = model_inference.detect(frame)
 
-      benchmark_thresholds = thresholds if thresholds else [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-      fps_values = []
-      inference_times = []
+      benchmark_thresholds = thresholds if thresholds else DEFAULT_BENCHMARK_THRESHOLDS
+      fps_values: list[float] = []
+      inference_times: list[float] = []
 
       for threshold in benchmark_thresholds:
         model_inference.set_confidence_threshold(threshold)
 
         cap = cv2.VideoCapture(benchmark_video)
-        frame_times = []
+        frame_times: list[float] = []
 
         for _ in range(benchmark_frames):
           ret, frame = cap.read()
@@ -197,13 +238,13 @@ def run_benchmark(
 
           frame_times.append(end_time - start_time)
 
-        cap.release()
-
         avg_time = np.mean(frame_times)
         fps = 1.0 / avg_time if avg_time > 0 else 0
 
         fps_values.append(float(fps))
         inference_times.append(float(avg_time))
+
+        cap.release()
 
       print(f"\nSpeed benchmarking results for {model_name} ({device}):")
       print("Threshold  |  FPS  |  Inference Time (ms)")
@@ -268,8 +309,10 @@ def run_benchmark(
     for model_name, fps, inference_time, device, categories_str in sorted_results:
       print(f"{model_name:<15} {fps:<8.1f} {inference_time:>6.2f} ms{' ':<3} {device:<6} {categories_str:<30}")
 
+  return benchmark_results
 
-def main():
+
+def main() -> None:
   args = parse_args()
   start_time = time.perf_counter()
 
@@ -326,32 +369,39 @@ def main():
       print(f"  - {model} (All categories: {', '.join(all_categories)})")
     return
 
+  models_to_process: list[str] = []
+
   if args.model:
-    models_to_evaluate = [args.model]
+    models_to_process = [args.model]
   elif args.models:
-    models_to_evaluate = args.models
+    models_to_process = args.models
   elif args.all:
-    models_to_evaluate = ModelRegistry.list_supported_models()
-  elif args.category:
-    models_to_evaluate = ModelRegistry.list_models_by_category(args.category)
+    models_to_process = ModelRegistry.list_supported_models()
+  elif args.categories:
+    # Get models that match ANY of the specified categories using a set to avoid duplicates
+    model_set: set[str] = set()
+    for category in args.categories:
+      model_set.update(ModelRegistry.list_models_by_category(category))
+    models_to_process = sorted(model_set)
   elif args.all_categories:
+    # Get models that match ALL of the specified categories
     all_models = ModelRegistry.list_supported_models()
-    models_to_evaluate = []
+    models_to_process = []
     for model in all_models:
       model_categories = set(ModelRegistry.get_model_categories(model))
       if all(category in model_categories for category in args.all_categories):
-        models_to_evaluate.append(model)
+        models_to_process.append(model)
   else:
     print("No models specified for evaluation.")
     return
 
-  if not models_to_evaluate:
-    print("No models found for evaluation.")
+  if not models_to_process:
+    print("No models found for processing.")
     return
 
   if args.benchmark_only:
     run_benchmark(
-      models_to_evaluate=models_to_evaluate,
+      models_to_process=models_to_process,
       device=args.device,
       dataset=args.dataset,
       output_dir=args.output_dir,
@@ -362,9 +412,9 @@ def main():
     )
     return
 
-  results = []
+  results: list[dict[str, Any]] = []
 
-  for model_name in models_to_evaluate:
+  for model_name in models_to_process:
     try:
       model_result = evaluate_single_model(
         model_name=model_name,
@@ -376,16 +426,21 @@ def main():
         save_plots=args.save_plots,
         save_metrics=args.save_metrics,
         save_reports=args.save_reports,
-        start_time=start_time,
         conf_threshold=args.conf,
       )
       results.append(model_result)
     except Exception as e:
       print(f"Error evaluating model {model_name}: {e}")
 
-  if len(results) > 1:
-    results.sort(key=lambda x: x.get("optimal_f1", 0), reverse=True)
+  results = [r for r in results if r is not None]
 
+  if not results:
+    print("No evaluation results to display.")
+    return
+
+  results.sort(key=lambda x: x.get("optimal_f1", 0), reverse=True)
+
+  if len(results) > 1:
     print("\n" + "=" * 120)
     print("MODELS COMPARISON (sorted by optimal F1 score)")
     print("=" * 120)
@@ -437,8 +492,6 @@ def main():
     print(f"\nTotal execution time: {minutes} minutes and {seconds:.2f} seconds")
   else:
     print(f"\nTotal execution time: {total_seconds:.2f} seconds")
-
-  return results
 
 
 if __name__ == "__main__":
