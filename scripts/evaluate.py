@@ -15,6 +15,7 @@ from detection.core.interfaces import ModelConfig
 from detection.core.registry import ModelRegistry
 from detection.eval.pipeline.config import EvaluationConfig, OutputConfig, ThresholdConfig
 from detection.eval.pipeline.pipeline import EvaluationPipeline
+from detection.eval.reporting import MultiModelReporter
 
 DEFAULT_BENCHMARK_THRESHOLDS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
@@ -438,50 +439,8 @@ def main() -> None:
     print("No evaluation results to display.")
     return
 
-  results.sort(key=lambda x: x.get("optimal_f1", 0), reverse=True)
-
-  if len(results) > 1:
-    print("\n" + "=" * 120)
-    print("MODELS COMPARISON (sorted by optimal F1 score)")
-    print("=" * 120)
-
-    print(
-      "\n{:<15} {:<8} {:<8} {:<8} {:<10} {:<8} {:<12} {:<6} {:<6} {:<30}".format(
-        "Model", "F1 Score", "mAP", "AP@0.5", "Opt Thresh", "FPS", "Infer Time", "Device", "IoU", "Categories"
-      )
-    )
-    print("-" * 120)
-
-    for result in results:
-      model_name = result.get("model_name", "")
-
-      categories_str = ", ".join(result.get("categories", []))
-      if len(categories_str) > 30:
-        categories_str = categories_str[:27] + "..."
-
-      optimal_f1 = result.get("optimal_f1", 0)
-      optimal_threshold = result.get("optimal_threshold", 0)
-      mAP = result.get("mAP", 0)
-      ap50 = result.get("ap50", 0)
-      fps = result.get("fps", 0)
-
-      inference_time_ms = 1000 / fps if fps > 0 else 0
-
-      print(
-        "{:<15} {:<8.3f} {:<8.4f} {:<8.4f} {:<10.3f} {:<8.1f} {:>6.2f} ms{:<3} {:<6} {:<6.2f} {:<30}".format(
-          model_name,
-          optimal_f1,
-          mAP,
-          ap50,
-          optimal_threshold,
-          fps,
-          inference_time_ms,
-          "",
-          args.device,
-          args.iou,
-          categories_str,
-        )
-      )
+  reporter = MultiModelReporter()
+  reporter.print_comparison(results, args.device, args.iou)
 
   end_time = time.perf_counter()
   total_seconds = end_time - start_time

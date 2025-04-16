@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 import numpy as np
 
 from detection.core.interfaces import ModelConfig
@@ -6,20 +8,20 @@ from detection.core.interfaces import ModelConfig
 class ConsoleReporter:
   """Reporter for console output of evaluation results"""
 
-  def __init__(self):
-    self.box_chars = {
-      'h_line': '═',
-      'v_line': '║',
-      'tl_corner': '╔',
-      'tr_corner': '╗',
-      'bl_corner': '╚',
-      'br_corner': '╝',
-      't_down': '╦',
-      't_up': '╩',
-      't_right': '╠',
-      't_left': '╣',
-      'cross': '╬',
-    }
+  # Box characters for table rendering
+  box_chars: ClassVar[dict[str, str]] = {
+    'h_line': '═',
+    'v_line': '║',
+    'tl_corner': '╔',
+    'tr_corner': '╗',
+    'bl_corner': '╚',
+    'br_corner': '╝',
+    't_down': '╦',
+    't_up': '╩',
+    't_right': '╠',
+    't_left': '╣',
+    'cross': '╬',
+  }
 
   def _create_header(self, title, width=80):
     """Create a boxed header with the given title."""
