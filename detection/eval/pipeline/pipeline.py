@@ -127,52 +127,85 @@ class MetricsCalculationStage(EvaluationStage):
   def __init__(self, metrics_calculator: MetricsCalculator):
     self.metrics_calculator = metrics_calculator
 
+  def _filter_predictions(self, pred_boxes, threshold):
+    """Filter predictions by confidence threshold"""
+    return [pred for pred in pred_boxes if pred[4] >= threshold]
+
+  def _filter_video_predictions(self, video_pred_boxes, threshold):
+    """Filter all frames in a video by threshold"""
+    return [self._filter_predictions(frame, threshold) for frame in video_pred_boxes]
+
   def process(self, context: PipelineContext) -> None:
-    with tqdm(total=len(context.all_gt_boxes), desc="Calculating metrics", position=1, leave=False) as progress_bar:
+    # Calculate initial metrics for each video (unfiltered)
+    with tqdm(total=len(context.all_gt_boxes), desc="Calculating initial metrics", position=1, leave=False) as progress_bar:
+      video_metrics = {}
+      for video_idx, (video_gt_boxes, video_pred_boxes) in enumerate(zip(context.all_gt_boxes, context.all_pred_boxes)):
+        progress_bar.set_description(f"Video {video_idx + 1}/{len(context.all_gt_boxes)}")
+        metrics = self.metrics_calculator.calculate_video_metrics(video_gt_boxes, video_pred_boxes, context.config.model_config.name)
+        video_metrics[video_idx + 1] = metrics
+        progress_bar.update(1)
+
+    # Calculate combined metrics (unfiltered) for threshold determination
+    tqdm.write("Calculating combined metrics...")
+    combined_metrics = EvaluationMetrics.create_combined_from_raw_data(
+      context.all_gt_boxes, context.all_pred_boxes, model_name=context.config.model_config.name
+    )
+
+    # Determine the effective threshold
+    if context.config.threshold.mode == "fixed":
+      context.optimal_threshold = context.config.threshold.value
+      tqdm.write(f"Using fixed confidence threshold: {context.optimal_threshold:.4f}")
+      if combined_metrics and combined_metrics.pr_curve_data and "thresholds" in combined_metrics.pr_curve_data:
+        threshold_idx = min(
+          range(len(combined_metrics.pr_curve_data["thresholds"])),
+          key=lambda i: abs(combined_metrics.pr_curve_data["thresholds"][i] - context.optimal_threshold),
+        )
+        p = combined_metrics.pr_curve_data["precisions"][threshold_idx]
+        r = combined_metrics.pr_curve_data["recalls"][threshold_idx]
+        context.optimal_f1 = 2 * (p * r) / (p + r) if (p + r) > 0 else 0
+    else:
+      tqdm.write("Finding optimal threshold...")
+      if combined_metrics and combined_metrics.pr_curve_data and "thresholds" in combined_metrics.pr_curve_data:
+        context.optimal_threshold, context.optimal_f1 = self.metrics_calculator.find_optimal_threshold(combined_metrics, metric=context.config.threshold.metric)
+      else:
+        tqdm.write("Warning: No PR curve data available. Using default threshold.")
+        context.optimal_threshold = 0.5
+        context.optimal_f1 = 0.0
+
+    # Recalculate metrics with the established threshold
+    tqdm.write(f"Recalculating metrics with threshold {context.optimal_threshold:.4f}...")
+    context.metrics = {}
+    with tqdm(total=len(context.all_gt_boxes), desc="Applying threshold", position=1, leave=False) as progress_bar:
       for video_idx, (video_gt_boxes, video_pred_boxes) in enumerate(zip(context.all_gt_boxes, context.all_pred_boxes)):
         progress_bar.set_description(f"Video {video_idx + 1}/{len(context.all_gt_boxes)}")
 
-        video_metrics = self.metrics_calculator.calculate_video_metrics(video_gt_boxes, video_pred_boxes, context.config.model_config.name)
-        video_metrics.device = context.config.model_config.device
+        filtered_pred_boxes = self._filter_video_predictions(video_pred_boxes, context.optimal_threshold)
+
+        video_metrics = self.metrics_calculator.calculate_video_metrics(video_gt_boxes, filtered_pred_boxes, context.config.model_config.name)
 
         if video_idx + 1 in context.video_performance_metrics:
           perf_metrics = context.video_performance_metrics[video_idx + 1]
           video_metrics.avg_inference_time = perf_metrics["avg_inference_time"]
           video_metrics.fps = perf_metrics["fps"]
 
+        video_metrics.device = context.config.model_config.device
         context.metrics[video_idx + 1] = video_metrics
         progress_bar.update(1)
 
-    if context.metrics:
-      tqdm.write("Calculating combined metrics...")
-      context.combined_metrics = EvaluationMetrics.create_combined_from_raw_data(
-        context.all_gt_boxes, context.all_pred_boxes, model_name=context.config.model_config.name
-      )
-      context.combined_metrics.device = context.config.model_config.device
+    # Recalculate combined metrics with threshold filtering
+    tqdm.write("Calculating final combined metrics...")
+    all_filtered_pred_boxes = []
+    for video_pred_boxes in context.all_pred_boxes:
+      all_filtered_pred_boxes.append(self._filter_video_predictions(video_pred_boxes, context.optimal_threshold))
 
-      if context.combined_metrics and context.overall_performance_metrics:
-        context.combined_metrics.avg_inference_time = context.overall_performance_metrics["avg_inference_time"]
-        context.combined_metrics.fps = context.overall_performance_metrics["fps"]
+    context.combined_metrics = EvaluationMetrics.create_combined_from_raw_data(
+      context.all_gt_boxes, all_filtered_pred_boxes, model_name=context.config.model_config.name
+    )
 
-      if context.combined_metrics:
-        if context.config.use_fixed_conf:
-          context.optimal_threshold = context.config.model_config.conf_threshold
-
-          if context.combined_metrics.pr_curve_data and "thresholds" in context.combined_metrics.pr_curve_data:
-            thresholds = context.combined_metrics.pr_curve_data["thresholds"]
-            precisions = context.combined_metrics.pr_curve_data["precisions"]
-            recalls = context.combined_metrics.pr_curve_data["recalls"]
-
-            closest_idx = min(range(len(thresholds)), key=lambda i: abs(thresholds[i] - context.optimal_threshold))
-            p = precisions[closest_idx]
-            r = recalls[closest_idx]
-
-            context.optimal_f1 = 2 * (p * r) / (p + r) if (p + r) > 0 else 0
-
-          tqdm.write(f"Using fixed confidence threshold: {context.optimal_threshold:.4f}")
-        else:
-          tqdm.write("Finding optimal threshold...")
-          context.optimal_threshold, context.optimal_f1 = self.metrics_calculator.find_optimal_threshold(context.combined_metrics, metric="f1")
+    context.combined_metrics.device = context.config.model_config.device
+    if context.overall_performance_metrics:
+      context.combined_metrics.avg_inference_time = context.overall_performance_metrics["avg_inference_time"]
+      context.combined_metrics.fps = context.overall_performance_metrics["fps"]
 
 
 class VisualizationStage(EvaluationStage):
@@ -252,7 +285,7 @@ class ReportingStage(EvaluationStage):
         self.reporter.generate_report(context.metrics, context.combined_metrics, metadata)
         progress_bar.update(1)
 
-    self.reporter.print_summary(context.metrics, context.combined_metrics, context.optimal_threshold, context.config.use_fixed_conf)
+    self.reporter.print_summary(context.metrics, context.combined_metrics, context.optimal_threshold, context.config.threshold.mode)
 
 
 class EvaluationPipeline:
@@ -260,6 +293,11 @@ class EvaluationPipeline:
 
   def __init__(self, config: EvaluationConfig):
     config.validate()
+
+    if config.threshold.mode == "fixed":
+      config.model_config.conf_threshold = config.threshold.value
+    else:
+      config.model_config.conf_threshold = 0.01  # Very low to catch everything
 
     self.config = config
     self.context = PipelineContext(config)
@@ -303,58 +341,64 @@ class EvaluationPipeline:
     """Run the complete pipeline"""
     stage_names = ["Loading data", "Running inference", "Calculating metrics", "Creating visualizations", "Generating reports"]
 
-    with tqdm(total=len(self.stages), desc="Pipeline progress", position=0, leave=False) as progress_bar:
+    progress_bar = tqdm(total=len(self.stages), desc="Pipeline progress", position=0, leave=False)
+    try:
       for stage, name in zip(self.stages, stage_names):
         progress_bar.set_description(f"Stage: {name}")
         stage.process(self.context)
         progress_bar.update(1)
 
-    self.context.execution_time = time.perf_counter() - self.context.start_time
+      self.context.execution_time = time.perf_counter() - self.context.start_time
 
-    mAP = 0
-    ap50 = 0
-    ap75 = 0
-    optimal_precision = 0
-    optimal_recall = 0
+      mAP = 0
+      ap50 = 0
+      ap75 = 0
+      optimal_precision = 0
+      optimal_recall = 0
 
-    if self.context.combined_metrics and self.context.combined_metrics.pr_curve_data and "thresholds" in self.context.combined_metrics.pr_curve_data:
-      mAP = self.context.combined_metrics.mAP
-      ap50 = self.context.combined_metrics.ap50
-      ap75 = self.context.combined_metrics.ap75
+      if self.context.combined_metrics and self.context.combined_metrics.pr_curve_data and "thresholds" in self.context.combined_metrics.pr_curve_data:
+        mAP = self.context.combined_metrics.mAP
+        ap50 = self.context.combined_metrics.ap50
+        ap75 = self.context.combined_metrics.ap75
 
-      thresholds = self.context.combined_metrics.pr_curve_data["thresholds"]
-      precisions = self.context.combined_metrics.pr_curve_data["precisions"]
-      recalls = self.context.combined_metrics.pr_curve_data["recalls"]
+        thresholds = self.context.combined_metrics.pr_curve_data["thresholds"]
+        precisions = self.context.combined_metrics.pr_curve_data["precisions"]
+        recalls = self.context.combined_metrics.pr_curve_data["recalls"]
 
-      if len(thresholds) > 0:
-        threshold_idx = min(range(len(thresholds)), key=lambda i: abs(thresholds[i] - self.context.optimal_threshold))
-        optimal_precision = float(precisions[threshold_idx])
-        optimal_recall = float(recalls[threshold_idx])
+        if len(thresholds) > 0:
+          threshold_idx = min(range(len(thresholds)), key=lambda i: abs(thresholds[i] - self.context.optimal_threshold))
+          optimal_precision = float(precisions[threshold_idx])
+          optimal_recall = float(recalls[threshold_idx])
 
-    # Get arithmetic means
-    if self.context.metrics:
-      avg_fps = sum(m.fps for m in self.context.metrics.values()) / len(self.context.metrics)
-      avg_inference_time = sum(m.avg_inference_time for m in self.context.metrics.values()) / len(self.context.metrics)
-    else:
-      avg_fps = 0
-      avg_inference_time = 0
+      # Get arithmetic means
+      if self.context.metrics:
+        avg_fps = sum(m.fps for m in self.context.metrics.values()) / len(self.context.metrics)
+        avg_inference_time = sum(m.avg_inference_time for m in self.context.metrics.values()) / len(self.context.metrics)
+      else:
+        avg_fps = 0
+        avg_inference_time = 0
 
-    threshold_field_name = "fixed_threshold" if self.config.use_fixed_conf else "optimal_threshold"
+      threshold_field_name = "fixed_threshold" if self.context.config.threshold.mode == "fixed" else "optimal_threshold"
 
-    return {
-      "model_name": self.config.model_config.name,
-      "metrics": self.context.combined_metrics,
-      threshold_field_name: self.context.optimal_threshold,
-      "optimal_f1": self.context.optimal_f1,
-      "optimal_precision": optimal_precision,
-      "optimal_recall": optimal_recall,
-      "execution_time": self.context.execution_time,
-      "device": self.config.model_config.device,
-      "iou_threshold": self.config.model_config.iou_threshold,
-      "mAP": mAP,
-      "ap50": ap50,
-      "ap75": ap75,
-      "fps": avg_fps,
-      "avg_inference_time": avg_inference_time,
-      "categories": self.config.model_config.categories if hasattr(self.config.model_config, "categories") else [],
-    }
+      return {
+        "model_name": self.config.model_config.name,
+        "metrics": self.context.combined_metrics,
+        threshold_field_name: self.context.optimal_threshold,
+        "optimal_f1": self.context.optimal_f1,
+        "optimal_precision": optimal_precision,
+        "optimal_recall": optimal_recall,
+        "execution_time": self.context.execution_time,
+        "device": self.config.model_config.device,
+        "iou_threshold": self.config.model_config.iou_threshold,
+        "mAP": mAP,
+        "ap50": ap50,
+        "ap75": ap75,
+        "fps": avg_fps,
+        "avg_inference_time": avg_inference_time,
+        "categories": self.config.model_config.categories if hasattr(self.config.model_config, "categories") else [],
+      }
+    except Exception as e:
+      print(f"Error in pipeline execution: {e}")
+      raise
+    finally:
+      progress_bar.close()

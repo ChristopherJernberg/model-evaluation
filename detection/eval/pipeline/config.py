@@ -22,15 +22,35 @@ class BenchmarkConfig:
 
 
 @dataclass
-class EvaluationConfig:
-  model_config: ModelConfig
+class ThresholdConfig:
+  """
+  Configuration for confidence threshold handling
 
+  In "fixed" mode, the specified value is used for both inference and evaluation.
+  In "auto" mode, a low threshold is used during inference to catch all possible
+  detections, then the optimal threshold is found during evaluation.
+  """
+
+  mode: str = "auto"  # "auto" or "fixed"
+  value: float = 0.0  # Used if mode is "fixed" (must be > 0.0)
+  metric: str = "f1"  # Metric to optimize if mode is "auto"
+
+
+@dataclass
+class EvaluationConfig:
+  # Core settings
+  model_config: ModelConfig
   data_dir: Path
+  dataset_name: str = ""
+
+  # Output settings
   output: OutputConfig = field(default_factory=OutputConfig)
 
+  # Processing settings
   frame_limit: int | None = None
-  use_fixed_conf: bool = False
+  threshold: ThresholdConfig = field(default_factory=ThresholdConfig)
 
+  # Performance testing
   benchmark: BenchmarkConfig = field(default_factory=BenchmarkConfig)
 
   def validate(self):
@@ -62,5 +82,12 @@ class EvaluationConfig:
 
       if self.benchmark.video_path and not self.benchmark.video_path.exists():
         raise FileNotFoundError(f"Benchmark video file does not exist: {self.benchmark.video_path}")
+
+    valid_modes = ["auto", "fixed"]
+    if self.threshold.mode not in valid_modes:
+      raise ValueError(f"Threshold mode must be one of {valid_modes}, got {self.threshold.mode}")
+
+    if self.threshold.mode == "fixed" and not 0 < self.threshold.value <= 1:
+      raise ValueError(f"Fixed threshold must be between 0 and 1, got {self.threshold.value}")
 
     return True

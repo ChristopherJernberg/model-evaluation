@@ -39,14 +39,13 @@ class Reporter:
 
     self.markdown_reporter.generate_report(results, combined_metrics, metadata)
 
-  def print_summary(
-    self, results: dict[int, EvaluationMetrics], combined_metrics: EvaluationMetrics | None, optimal_threshold: float, is_fixed_threshold: bool = False
-  ) -> None:
+  def print_summary(self, results, combined_metrics, optimal_threshold, threshold_mode="auto"):
     """Print summary of results to console"""
-
+    print("\n")
     dataset_name = self.dataset_name or "unknown"
 
-    print("\n")
+    is_fixed_threshold = threshold_mode == "fixed"
+
     self.console_reporter.print_summary(
       results,
       combined_metrics,

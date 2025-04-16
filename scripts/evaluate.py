@@ -12,7 +12,7 @@ import numpy as np
 
 from detection.core.interfaces import ModelConfig
 from detection.core.registry import ModelRegistry
-from detection.eval.pipeline.config import EvaluationConfig, OutputConfig
+from detection.eval.pipeline.config import EvaluationConfig, OutputConfig, ThresholdConfig
 from detection.eval.pipeline.pipeline import EvaluationPipeline
 
 
@@ -41,7 +41,8 @@ def parse_args():
 
   # Threshold arguments
   parser.add_argument("--iou", type=float, default=0.45, help="IoU threshold")
-  parser.add_argument("--conf", type=float, help="Custom confidence threshold (skips optimal threshold search if provided)")
+  parser.add_argument("--conf", type=float, help="Custom confidence threshold (sets threshold mode to 'fixed')")
+  parser.add_argument("--threshold-mode", choices=["auto", "fixed"], default="auto", help="Threshold handling mode")
 
   # Benchmark options
   benchmark_group = parser.add_argument_group("Benchmark Options")
@@ -86,7 +87,8 @@ def evaluate_single_model(
   )
 
   output_config = OutputConfig(base_dir=Path(output_dir), save_videos=save_videos, save_plots=save_plots, save_metrics=save_metrics, save_reports=save_reports)
-  config = EvaluationConfig(model_config=model_config, data_dir=Path("testdata") / dataset, output=output_config, use_fixed_conf=conf_threshold is not None)
+  threshold_config = ThresholdConfig(mode="fixed" if conf_threshold is not None else "auto", value=conf_threshold if conf_threshold is not None else 0.0)
+  config = EvaluationConfig(model_config=model_config, data_dir=Path("testdata") / dataset, output=output_config, threshold=threshold_config)
 
   print(f"\nEvaluating model: {model_name}")
   print(f"Device: {device}")

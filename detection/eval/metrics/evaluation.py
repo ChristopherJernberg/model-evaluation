@@ -106,7 +106,7 @@ class EvaluationMetrics:
       best_idx = np.argmax(f1_scores)
       return thresholds[best_idx], f1_scores[best_idx]
 
-    return 0.5, 0.0  # Default threshold and score
+    return 0.0, 0.0  # Default threshold and score
 
   @classmethod
   def create_combined_from_raw_data(
