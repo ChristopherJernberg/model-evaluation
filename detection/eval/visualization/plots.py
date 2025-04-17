@@ -39,7 +39,102 @@ class PlotVisualizer:
     if len(thresholds) > 0:
       thresholds = thresholds[:min_length]
 
-    plt.plot(recalls, precisions, linewidth=2, markersize=6, color='#1f77b4', alpha=0.8)
+    main_color = '#1f77b4'
+    curve_points = list(zip(recalls, precisions))
+
+    def check_text_collision(x, y, width, height, points):
+      """Check if text box at position collides with any curve points"""
+      for cx, cy in points:
+        if x <= cx <= x + width and y <= cy <= y + height:
+          return True
+      return False
+
+    def find_optimal_position(x, y, is_marked_point=False):
+      """Find optimal position for a label at point (x,y)"""
+      if is_marked_point:
+        side_offset = 0.15
+        top_offset = 0.15
+        bottom_offset = 0.15
+        text_width = 0.15
+        text_height = 0.07
+      else:
+        side_offset = 0.012
+        top_offset = 0.02
+        bottom_offset = 0.035
+        text_width = 0.03
+        text_height = 0.02
+
+      candidates = []
+
+      if y > 0.5:
+        candidates.append((0, -bottom_offset, 'center', 'below', -0.2))
+      else:
+        candidates.append((0, top_offset, 'center', 'above', 0.2))
+      candidates.append((side_offset, 0, 'left', 'right', -0.2))
+      candidates.append((-side_offset, 0, 'right', 'left', 0.2))
+      candidates.append((side_offset, top_offset, 'left', 'top-right', -0.2))
+      candidates.append((side_offset, -bottom_offset, 'left', 'bottom-right', -0.2))
+      candidates.append((-side_offset, -bottom_offset, 'right', 'bottom-left', 0.2))
+      candidates.append((-side_offset, top_offset, 'right', 'top-left', 0.2))
+
+      if x < 0.1:
+        candidates.sort(key=lambda c: -c[0])
+      elif x > 0.9:
+        candidates.sort(key=lambda c: c[0])
+
+      if y < 0.1:
+        candidates.sort(key=lambda c: -c[1])
+      elif y > 0.9:
+        candidates.sort(key=lambda c: c[1])
+
+      for dx, dy, ha, position_name, arrow_dir in candidates:
+        label_x = x + dx
+        label_y = y + dy
+
+        if ha == 'center':
+          text_left = label_x - text_width / 2
+        elif ha == 'left':
+          text_left = label_x
+        else:
+          text_left = label_x - text_width
+
+        text_bottom = label_y - text_height / 2
+
+        if not check_text_collision(text_left, text_bottom, text_width, text_height, curve_points):
+          return dx, dy, ha, position_name, arrow_dir
+
+      # If no collision-free position found, use larger offsets
+      for dx, dy, ha, position_name, arrow_dir in candidates:
+        dx *= 1.5
+        dy *= 1.5
+        label_x = x + dx
+        label_y = y + dy
+
+        if ha == 'center':
+          text_left = label_x - text_width / 2
+        elif ha == 'left':
+          text_left = label_x
+        else:
+          text_left = label_x - text_width
+
+        text_bottom = label_y - text_height / 2
+
+        if not check_text_collision(text_left, text_bottom, text_width, text_height, curve_points):
+          return dx, dy, ha, position_name, arrow_dir
+
+      # If still no good position, use default with larger offset
+      dx, dy, ha, position_name, arrow_dir = candidates[0]
+      if position_name == 'right' or position_name == 'left':
+        dx *= 2.0
+      elif position_name == 'below':
+        dy *= 2.5
+      else:
+        dx *= 2.2
+        dy *= 2.2
+
+      return dx, dy, ha, position_name, arrow_dir
+
+    plt.plot(recalls, precisions, linewidth=2, markersize=6, color=main_color, alpha=0.8)
 
     if len(recalls) > 1:
       points = np.array([recalls, precisions]).T.reshape(-1, 1, 2)
@@ -62,20 +157,28 @@ class PlotVisualizer:
         standard_thresholds = [0.1, 0.3, 0.5, 0.7, 0.9]
         cbar.set_ticks(standard_thresholds)
 
-        for threshold in standard_thresholds:
+        std_annotation_positions = {}
+        for conf in standard_thresholds:
           if len(thresholds) > 0:
-            idx = np.abs(thresholds - threshold).argmin()
+            idx = np.abs(thresholds - conf).argmin()
             if idx < len(recalls) and idx < len(precisions):
               x, y = recalls[idx], precisions[idx]
-              plt.plot(x, y, 'o', color='#1f77b4', markersize=6, alpha=0.8, markerfacecolor='white', markeredgewidth=1)
+              plt.plot(x, y, 'o', color=main_color, markersize=6, alpha=0.8, markerfacecolor='white', markeredgewidth=1)
+
+              dx, dy, ha, _, _ = find_optimal_position(x, y, is_marked_point=False)
 
               plt.annotate(
-                f"{threshold:.1f}",
+                f"{conf:.1f}",
                 xy=(x, y),
-                xytext=(x + 0.02, y - 0.02),
+                xytext=(x + dx, y + dy),
+                textcoords='data',
                 fontsize=8,
                 color='black',
+                ha=ha,
+                zorder=6,
               )
+
+              std_annotation_positions[(x, y)] = (x + dx, y + dy)
 
     if mark_thresholds and len(thresholds) > 0:
       for threshold in mark_thresholds:
@@ -95,15 +198,20 @@ class PlotVisualizer:
               zorder=10,
             )
 
+            dx, dy, ha, _, arrow_dir = find_optimal_position(x, y, is_marked_point=True)
+            dx *= 0.85
+            dy *= 0.85
+
             plt.annotate(
               f'Threshold: {threshold:.2f}\nP={y:.2f}, R={x:.2f}',
               xy=(x, y),
-              xytext=(x + 0.1, y - 0.1),
-              arrowprops=dict(arrowstyle="->", color='red', connectionstyle="arc3,rad=-0.2"),
+              xytext=(x + dx, y + dy),
+              arrowprops=dict(arrowstyle="->", color='red', connectionstyle=f"arc3,rad={arrow_dir}"),
               bbox=dict(boxstyle="round,pad=0.4", fc="white", ec="red", alpha=0.9),
               fontsize=10,
               fontweight='bold',
               color='black',
+              ha=ha,
               zorder=11,
             )
         except (IndexError, ValueError) as e:
@@ -121,6 +229,10 @@ class PlotVisualizer:
     plt.xlim([0, 1])
     plt.ylim([0, 1])
     plt.grid(True, alpha=0.3, linestyle='--')
+
+    # Add cleaner spines
+    plt.gca().spines['right'].set_visible(False)
+    plt.gca().spines['top'].set_visible(False)
 
     info_text = f"AP@0.5 = {metrics.ap50:.4f}\nAP@0.75 = {metrics.ap75:.4f}\nmAP = {metrics.mAP:.4f}"
     plt.text(0.05, 0.05, info_text, fontsize=10, bbox=dict(facecolor='white', edgecolor='gray', alpha=0.9, boxstyle='round,pad=0.5'))

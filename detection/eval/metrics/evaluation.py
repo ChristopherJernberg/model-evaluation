@@ -135,60 +135,73 @@ class EvaluationMetrics:
     if not metrics_list:
       return cls(model_name="none")
 
-    precisions_per_recall = {}
-    all_recalls = set()
+    combined = cls(model_name=metrics_list[0].model_name if metrics_list else "")
 
+    all_thresholds: set[float] = set()
     for metrics in metrics_list:
-      all_recalls.update(metrics.pr_curve_data["recalls"])
+      if metrics.pr_curve_data and "thresholds" in metrics.pr_curve_data:
+        all_thresholds.update(metrics.pr_curve_data["thresholds"])
 
-    all_recalls = sorted(all_recalls)
+    sorted_thresholds = sorted(all_thresholds, reverse=True)
 
-    # Interpolate precision for each recall value
-    for recall in all_recalls:
-      precisions = []
+    if not sorted_thresholds:
+      return combined
+
+    avg_precisions: list[float] = []
+    avg_recalls: list[float] = []
+    final_thresholds: list[float] = []
+
+    for threshold in sorted_thresholds:
+      # Skip extremely high/low thresholds that might cause instability
+      if threshold > 0.99 or threshold < 0.01:
+        continue
+
+      precisions_at_threshold = []
+      recalls_at_threshold = []
+
       for metrics in metrics_list:
-        # Find precision at this recall by interpolation
-        recalls = metrics.pr_curve_data["recalls"]
-        precisions_array = metrics.pr_curve_data["precisions"]
+        if not metrics.pr_curve_data or "thresholds" not in metrics.pr_curve_data:
+          continue
 
-        if recall in recalls:
-          idx = np.where(recalls == recall)[0][0]
-          precisions.append(precisions_array[idx])
-        else:
-          # Find nearest recalls and interpolate
-          higher_recalls = recalls[recalls >= recall]
-          lower_recalls = recalls[recalls <= recall]
+        thresholds = metrics.pr_curve_data["thresholds"]
 
-          if len(higher_recalls) > 0 and len(lower_recalls) > 0:
-            higher_recall = np.min(higher_recalls)
-            lower_recall = np.max(lower_recalls)
-            higher_idx = np.where(recalls == higher_recall)[0][0]
-            lower_idx = np.where(recalls == lower_recall)[0][0]
+        # Find the closest threshold index
+        idx = np.abs(thresholds - threshold).argmin()
 
-            # Linear interpolation
-            if higher_recall != lower_recall:
-              weight = (recall - lower_recall) / (higher_recall - lower_recall)
-              interp_precision = precisions_array[lower_idx] * (1 - weight) + precisions_array[higher_idx] * weight
-            else:
-              interp_precision = precisions_array[lower_idx]
+        if abs(thresholds[idx] - threshold) < 0.02:
+          precisions_at_threshold.append(metrics.pr_curve_data["precisions"][idx])
+          recalls_at_threshold.append(metrics.pr_curve_data["recalls"][idx])
 
-            precisions.append(interp_precision)
+      # Only include thresholds that have data from at least half the videos
+      if len(precisions_at_threshold) >= len(metrics_list) / 2:
+        avg_precisions.append(np.mean(precisions_at_threshold))
+        avg_recalls.append(np.mean(recalls_at_threshold))
+        final_thresholds.append(threshold)
 
-      if precisions:
-        precisions_per_recall[recall] = np.mean(precisions)
+    if not final_thresholds:
+      return combined
 
-    combined = cls(model_name=metrics_list[0].model_name)
+    avg_precisions_array = np.array(avg_precisions)
+    avg_recalls_array = np.array(avg_recalls)
+    final_thresholds_array = np.array(final_thresholds)
 
-    sorted_recalls = sorted(precisions_per_recall.keys())
-    combined.pr_curve_data["recalls"] = np.array(sorted_recalls)
-    combined.pr_curve_data["precisions"] = np.array([precisions_per_recall[r] for r in sorted_recalls])
+    sort_idx = np.argsort(avg_recalls_array)
+    avg_precisions_array = avg_precisions_array[sort_idx]
+    avg_recalls_array = avg_recalls_array[sort_idx]
+    final_thresholds_array = final_thresholds_array[sort_idx]
 
     # Calculate AP
-    combined.ap50 = calculate_ap(combined.pr_curve_data["precisions"], combined.pr_curve_data["recalls"])
+    combined.ap50 = calculate_ap(avg_precisions_array, avg_recalls_array)
+    combined.pr_curve_data = {"recalls": avg_recalls_array, "precisions": avg_precisions_array, "thresholds": final_thresholds_array}
 
-    # Use thresholds from first metrics
-    if "thresholds" in metrics_list[0].pr_curve_data:
-      combined.pr_curve_data["thresholds"] = metrics_list[0].pr_curve_data["thresholds"]
+    if metrics_list:
+      ap75_values = [m.ap75 for m in metrics_list if hasattr(m, 'ap75')]
+      mAP_values = [m.mAP for m in metrics_list if hasattr(m, 'mAP')]
+
+      combined.ap75 = sum(ap75_values) / max(len(ap75_values), 1) if ap75_values else combined.ap50
+      combined.mAP = sum(mAP_values) / max(len(mAP_values), 1) if mAP_values else combined.ap50
+    else:
+      combined.mAP = combined.ap75 = combined.ap50
 
     return combined
 
@@ -289,7 +302,7 @@ def evaluate_detections(
 
 
 def calculate_precision_recall_curve(
-  all_gt_boxes: list[list[BoundingBox]], all_pred_boxes: list[list[Detection]], iou_threshold: float = 0.5
+  all_gt_boxes: list[list[BoundingBox]], all_pred_boxes: list[list[Detection]], iou_threshold: float
 ) -> dict[str, np.ndarray]:
   """Calculate precision-recall curve for a set of predictions"""
   all_predictions = []

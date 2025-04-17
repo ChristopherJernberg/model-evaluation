@@ -138,35 +138,46 @@ class MetricsCalculationStage(EvaluationStage):
   def process(self, context: PipelineContext) -> None:
     # Calculate initial metrics for each video (unfiltered)
     with tqdm(total=len(context.all_gt_boxes), desc="Calculating initial metrics", position=1, leave=False) as progress_bar:
-      video_metrics = {}
+      initial_video_metrics = {}
       for video_idx, (video_gt_boxes, video_pred_boxes) in enumerate(zip(context.all_gt_boxes, context.all_pred_boxes)):
         progress_bar.set_description(f"Video {video_idx + 1}/{len(context.all_gt_boxes)}")
         metrics = self.metrics_calculator.calculate_video_metrics(video_gt_boxes, video_pred_boxes, context.config.model_config.name)
-        video_metrics[video_idx + 1] = metrics
+        initial_video_metrics[video_idx + 1] = metrics
         progress_bar.update(1)
+
+    original_video_pr_data = {}
+    for video_idx, metrics in initial_video_metrics.items():
+      if hasattr(metrics, 'pr_curve_data') and metrics.pr_curve_data:
+        original_video_pr_data[video_idx] = metrics.pr_curve_data.copy()
 
     # Calculate combined metrics (unfiltered) for threshold determination
     tqdm.write("Calculating combined metrics...")
-    combined_metrics = EvaluationMetrics.create_combined_from_raw_data(
+    initial_combined_metrics = EvaluationMetrics.create_combined_from_raw_data(
       context.all_gt_boxes, context.all_pred_boxes, model_name=context.config.model_config.name
     )
+
+    original_pr_curve_data = None
+    if initial_combined_metrics and hasattr(initial_combined_metrics, 'pr_curve_data'):
+      original_pr_curve_data = initial_combined_metrics.pr_curve_data.copy()
 
     # Determine the effective threshold
     if context.config.threshold.mode == "fixed":
       context.optimal_threshold = context.config.threshold.value
       tqdm.write(f"Using fixed confidence threshold: {context.optimal_threshold:.4f}")
-      if combined_metrics and combined_metrics.pr_curve_data and "thresholds" in combined_metrics.pr_curve_data:
+      if initial_combined_metrics and initial_combined_metrics.pr_curve_data and "thresholds" in initial_combined_metrics.pr_curve_data:
         threshold_idx = min(
-          range(len(combined_metrics.pr_curve_data["thresholds"])),
-          key=lambda i: abs(combined_metrics.pr_curve_data["thresholds"][i] - context.optimal_threshold),
+          range(len(initial_combined_metrics.pr_curve_data["thresholds"])),
+          key=lambda i: abs(initial_combined_metrics.pr_curve_data["thresholds"][i] - context.optimal_threshold),
         )
-        p = combined_metrics.pr_curve_data["precisions"][threshold_idx]
-        r = combined_metrics.pr_curve_data["recalls"][threshold_idx]
+        p = initial_combined_metrics.pr_curve_data["precisions"][threshold_idx]
+        r = initial_combined_metrics.pr_curve_data["recalls"][threshold_idx]
         context.optimal_f1 = 2 * (p * r) / (p + r) if (p + r) > 0 else 0
     else:
       tqdm.write("Finding optimal threshold...")
-      if combined_metrics and combined_metrics.pr_curve_data and "thresholds" in combined_metrics.pr_curve_data:
-        context.optimal_threshold, context.optimal_f1 = self.metrics_calculator.find_optimal_threshold(combined_metrics, metric=context.config.threshold.metric)
+      if initial_combined_metrics and initial_combined_metrics.pr_curve_data and "thresholds" in initial_combined_metrics.pr_curve_data:
+        context.optimal_threshold, context.optimal_f1 = self.metrics_calculator.find_optimal_threshold(
+          initial_combined_metrics, metric=context.config.threshold.metric
+        )
       else:
         tqdm.write("Warning: No PR curve data available. Using default threshold.")
         context.optimal_threshold = 0.5
@@ -207,6 +218,13 @@ class MetricsCalculationStage(EvaluationStage):
       context.combined_metrics.avg_inference_time = context.overall_performance_metrics["avg_inference_time"]
       context.combined_metrics.fps = context.overall_performance_metrics["fps"]
 
+    if original_pr_curve_data:
+      context.combined_metrics.pr_curve_data = original_pr_curve_data
+
+    for video_idx, pr_data in original_video_pr_data.items():
+      if video_idx in context.metrics:
+        context.metrics[video_idx].pr_curve_data = pr_data
+
 
 class VisualizationStage(EvaluationStage):
   """Stage for creating visualizations"""
@@ -239,6 +257,7 @@ class VisualizationStage(EvaluationStage):
 
         progress_bar.set_description("Creating equally weighted PR curve")
         equally_weighted_metrics = EvaluationMetrics.create_equally_weighted_combined(list(context.metrics.values()))
+
         self.visualizer.create_pr_curve(equally_weighted_metrics, context.optimal_threshold, "equally_weighted_pr_curve.png")
         progress_bar.update(1)
 
@@ -294,10 +313,12 @@ class EvaluationPipeline:
   def __init__(self, config: EvaluationConfig):
     config.validate()
 
-    if config.threshold.mode == "fixed":
-      config.model_config.conf_threshold = config.threshold.value
-    else:
-      config.model_config.conf_threshold = 0.01  # Very low to catch everything
+    self.original_conf_threshold = config.model_config.conf_threshold
+    config.model_config.conf_threshold = 0.01  # Very low to catch everything
+
+    # Store the intended threshold mode for later filtering
+    self.intended_threshold_mode = config.threshold.mode
+    self.intended_threshold_value = config.threshold.value if config.threshold.mode == "fixed" else 0.0
 
     self.config = config
     self.context = PipelineContext(config)
@@ -320,6 +341,8 @@ class EvaluationPipeline:
       VisualizationStage(self.visualizer),
       ReportingStage(self.reporter),
     ]
+
+    self.unfiltered_pr_curve_data = None
 
   def _setup_output_dirs(self) -> dict[str, Path]:
     dirs = {}
