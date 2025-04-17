@@ -5,6 +5,8 @@ from pathlib import Path
 from tqdm.auto import tqdm
 
 from detection.core.interfaces import BoundingBox, Detection
+from detection.core.registry import ModelRegistry
+from detection.eval.benchmarking import SpeedBenchmark
 from detection.eval.metrics import EvaluationMetrics
 from detection.eval.pipeline.config import EvaluationConfig
 from detection.eval.pipeline.data_loader import DataLoader
@@ -307,6 +309,46 @@ class ReportingStage(EvaluationStage):
     self.reporter.print_summary(context.metrics, context.combined_metrics, context.optimal_threshold, context.config.threshold.mode)
 
 
+class BenchmarkingStage(EvaluationStage):
+  """Stage for benchmarking model performance"""
+
+  def __init__(self, model_registry, output_dir: dict[str, Path]):
+    self.model_registry = model_registry
+    self.output_dir = output_dir
+
+  def process(self, context: PipelineContext) -> None:
+    """Run speed benchmarking if configured in context"""
+    if not context.config.benchmark.enabled:
+      return
+
+    video_path = None
+    if context.config.benchmark.video_path:
+      video_path = str(context.config.benchmark.video_path)
+    elif context.video_paths:
+      video_path = str(context.video_paths[0])
+
+    if not video_path:
+      print("Warning: No video found for benchmarking, skipping benchmark stage")
+      return
+
+    if "plots" in self.output_dir:
+      plots_dir = self.output_dir["plots"]
+    else:
+      plots_dir = next(iter(self.output_dir.values()))
+
+    plots_dir.mkdir(parents=True, exist_ok=True)
+
+    benchmark = SpeedBenchmark(
+      model_registry=self.model_registry,
+      thresholds=context.config.benchmark.thresholds,
+      benchmark_frames=context.config.benchmark.num_frames,
+      device=context.config.model_config.device,
+    )
+
+    benchmark_results = benchmark.benchmark_model(context.config.model_config.name, video_path, plots_dir)
+    context.benchmark_results = benchmark_results
+
+
 class EvaluationPipeline:
   """Main pipeline orchestrator"""
 
@@ -341,6 +383,10 @@ class EvaluationPipeline:
       VisualizationStage(self.visualizer),
       ReportingStage(self.reporter),
     ]
+
+    # Add benchmarking stage if enabled
+    if config.benchmark.enabled:
+      self.stages.append(BenchmarkingStage(ModelRegistry, self.context.outputs))
 
     self.unfiltered_pr_curve_data = None
 

@@ -8,16 +8,12 @@ import time
 from pathlib import Path
 from typing import Any
 
-import cv2
-import numpy as np
-
 from detection.core.interfaces import ModelConfig
 from detection.core.registry import ModelRegistry
-from detection.eval.pipeline.config import EvaluationConfig, OutputConfig, ThresholdConfig
+from detection.eval.benchmarking import DEFAULT_BENCHMARK_THRESHOLDS, SpeedBenchmark
+from detection.eval.pipeline.config import BenchmarkConfig, EvaluationConfig, OutputConfig, ThresholdConfig
 from detection.eval.pipeline.pipeline import EvaluationPipeline
 from detection.eval.reporting import MultiModelReporter
-
-DEFAULT_BENCHMARK_THRESHOLDS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
 
 def parse_args() -> argparse.Namespace:
@@ -56,6 +52,7 @@ def parse_args() -> argparse.Namespace:
   benchmark_group.add_argument("--thresholds", "-t", nargs="+", type=float, help="Custom confidence thresholds for benchmarking")
   benchmark_group.add_argument("--benchmark-frames", "-bf", type=int, default=100, help="Number of frames to use for benchmarking")
   benchmark_group.add_argument("--benchmark-video", "-bv", help="Specific video file to use for benchmarking")
+  benchmark_group.add_argument("--run-benchmark", "-rb", action="store_true", help="Run speed benchmark as part of regular evaluation")
 
   # Output control options
   output_group = parser.add_argument_group("Output Options")
@@ -81,6 +78,9 @@ def evaluate_single_model(
   save_metrics: bool,
   save_reports: bool,
   conf_threshold: float | None = None,
+  run_benchmark: bool = False,
+  benchmark_frames: int = 100,
+  benchmark_thresholds: list[float] | None = None,
 ) -> dict[str, Any]:
   """
   Evaluate a single model with the given parameters
@@ -97,6 +97,9 @@ def evaluate_single_model(
       save_reports: Whether to save benchmark reports
       start_time: Optional start time for timing
       conf_threshold: Optional fixed confidence threshold
+      run_benchmark: Whether to run benchmark
+      benchmark_frames: Number of frames to use for benchmarking
+      benchmark_thresholds: Custom confidence thresholds for benchmarking
 
   Returns:
       Dictionary containing evaluation results
@@ -112,7 +115,16 @@ def evaluate_single_model(
 
   output_config = OutputConfig(base_dir=Path(output_dir), save_videos=save_videos, save_plots=save_plots, save_metrics=save_metrics, save_reports=save_reports)
   threshold_config = ThresholdConfig(mode="fixed" if conf_threshold is not None else "auto", value=conf_threshold if conf_threshold is not None else 0.0)
-  config = EvaluationConfig(model_config=model_config, data_dir=Path("testdata") / dataset, output=output_config, threshold=threshold_config)
+
+  benchmark_config = BenchmarkConfig(
+    enabled=run_benchmark,
+    thresholds=benchmark_thresholds if benchmark_thresholds else DEFAULT_BENCHMARK_THRESHOLDS,
+    num_frames=benchmark_frames,
+  )
+
+  config = EvaluationConfig(
+    model_config=model_config, data_dir=Path("testdata") / dataset, output=output_config, threshold=threshold_config, benchmark=benchmark_config
+  )
 
   print(f"\nEvaluating model: {model_name}")
   print(f"Device: {device}")
@@ -132,185 +144,23 @@ def evaluate_single_model(
   return model_results
 
 
-def run_benchmark(
-  models_to_process: list[str],
-  device: str,
-  dataset: str,
-  output_dir: str,
-  thresholds: list[float] | None = None,
-  benchmark_frames: int = 75,
-  benchmark_video: str | None = None,
-  save_plots: bool = True,
-) -> dict[str, dict[str, Any]]:
-  """
-  Run speed benchmark for the specified models
+def run_benchmarks(args, models_to_process):
+  benchmark_config = BenchmarkConfig(
+    enabled=True,
+    thresholds=args.thresholds if args.thresholds else DEFAULT_BENCHMARK_THRESHOLDS,
+    num_frames=args.benchmark_frames,
+  )
 
-  Args:
-      models_to_process: List of model names to benchmark
-      device: Device to run inference on (mps, cuda, cpu)
-      dataset: Dataset name to use for test videos
-      output_dir: Base directory for saving results
-      thresholds: Optional list of confidence thresholds to test
-      benchmark_frames: Number of frames to use for benchmarking
-      benchmark_video: Optional specific video file to use
-      save_plots: Whether to save speed plots
+  benchmark = SpeedBenchmark(
+    model_registry=ModelRegistry,
+    thresholds=benchmark_config.thresholds,
+    benchmark_frames=benchmark_config.num_frames,
+    device=args.device,
+  )
 
-  Returns:
-      Dictionary of benchmark results by model
-  """
-  print(f"Running speed benchmark for {len(models_to_process)} models:")
-
-  for model in models_to_process:
-    print(f"  - {model}")
-
-  print("\nBenchmark configuration:")
-  print(f"  Device: {device}")
-  print(f"  Frames: {benchmark_frames}")
-
-  if thresholds:
-    print(f"  Custom thresholds: {', '.join(str(t) for t in thresholds)}")
-
-  if not benchmark_video:
-    dataset_path = Path("testdata") / dataset
-    video_dir = dataset_path / "videos"
-    if video_dir.exists():
-      video_files = sorted(video_dir.glob("*.mp4"))
-      if video_files:
-        benchmark_video = str(video_files[0])
-
-  if not benchmark_video or not Path(benchmark_video).exists():
-    print("Error: No valid video found for benchmarking.")
-    return {}
-
-  print(f"Using video: {Path(benchmark_video).name}\n")
-
-  benchmark_results: dict[str, dict[str, Any]] = {}
-
-  for model_name in models_to_process:
-    try:
-      plots_dir = None
-      if save_plots:
-        plots_dir = Path(output_dir) / "visualizations" / "plots" / model_name
-        plots_dir.mkdir(parents=True, exist_ok=True)
-
-      model_config = ModelConfig(
-        name=model_name,
-        device=device,
-        conf_threshold=0.25,  # Default for benchmarking
-        iou_threshold=0.45,  # Default for benchmarking
-      )
-
-      from detection.eval.pipeline.inference import ModelInference
-
-      print(f"\nBenchmarking {model_name} ({device})...")
-      model_inference = ModelInference(model_config)
-      model_inference.setup()
-
-      cap = cv2.VideoCapture(benchmark_video)
-      ret, frame = cap.read()
-      cap.release()
-
-      if not ret:
-        print(f"Error: Could not read frame from {benchmark_video}")
-        continue
-
-      # Warm-up runs
-      for _ in range(10):
-        _ = model_inference.detect(frame)
-
-      benchmark_thresholds = thresholds if thresholds else DEFAULT_BENCHMARK_THRESHOLDS
-      fps_values: list[float] = []
-      inference_times: list[float] = []
-
-      for threshold in benchmark_thresholds:
-        model_inference.set_confidence_threshold(threshold)
-
-        cap = cv2.VideoCapture(benchmark_video)
-        frame_times: list[float] = []
-
-        for _ in range(benchmark_frames):
-          ret, frame = cap.read()
-          if not ret:
-            break
-
-          start_time = time.perf_counter()
-          _ = model_inference.detect(frame)
-          end_time = time.perf_counter()
-
-          frame_times.append(end_time - start_time)
-
-        avg_time = np.mean(frame_times)
-        fps = 1.0 / avg_time if avg_time > 0 else 0
-
-        fps_values.append(float(fps))
-        inference_times.append(float(avg_time))
-
-        cap.release()
-
-      print(f"\nSpeed benchmarking results for {model_name} ({device}):")
-      print("Threshold  |  FPS  |  Inference Time (ms)")
-      print("-" * 45)
-
-      for threshold, fps in zip(benchmark_thresholds, fps_values):
-        inference_time = 1000 / fps if fps > 0 else float('inf')
-        print(f"{threshold:.2f}       |  {fps:.1f}  |  {inference_time:.2f} ms")
-
-      if plots_dir:
-        import matplotlib
-
-        matplotlib.use('Agg')
-        import matplotlib.pyplot as plt
-
-        plt.figure(figsize=(10, 6))
-        plt.plot(benchmark_thresholds, fps_values, marker='o', linewidth=2, markersize=6)
-        plt.xlabel('Confidence Threshold')
-        plt.ylabel('FPS')
-        plt.title(f'Speed vs Threshold - {model_name} ({device})')
-        plt.grid(True, alpha=0.3, linestyle='--')
-        plt.savefig(plots_dir / "speed_vs_threshold.png", dpi=150)
-        plt.close()
-
-      # Store benchmark results
-      benchmark_results[model_name] = {
-        "thresholds": benchmark_thresholds,
-        "fps_values": fps_values,
-        "categories": ModelRegistry.get_model_categories(model_name),
-        "device": device,
-      }
-
-    except Exception as e:
-      print(f"Error benchmarking model {model_name}: {e}")
-
-  if len(benchmark_results) > 1:
-    print("\n\n" + "=" * 80)
-    print("SPEED BENCHMARK COMPARISON")
-    print("=" * 80)
-
-    common_threshold = 0.5
-
-    print(f"\nPerformance at threshold ~{common_threshold:.2f}:")
-    print(f"{'Model':<15} {'FPS':<8} {'Infer Time':<12} {'Device':<6} {'Categories':<30}")
-    print("-" * 80)
-
-    sorted_results = []
-    for model_name, data in benchmark_results.items():
-      idx = np.abs(np.array(data["thresholds"]) - common_threshold).argmin()
-      fps = data["fps_values"][idx]
-      inference_time = 1000 / fps if fps > 0 else float('inf')
-      device = data.get("device", "unknown")
-
-      categories_str = ", ".join(data["categories"])
-      if len(categories_str) > 30:
-        categories_str = categories_str[:27] + "..."
-
-      sorted_results.append((model_name, fps, inference_time, device, categories_str))
-
-    sorted_results.sort(key=lambda x: x[1], reverse=True)
-
-    for model_name, fps, inference_time, device, categories_str in sorted_results:
-      print(f"{model_name:<15} {fps:<8.1f} {inference_time:>6.2f} ms{' ':<3} {device:<6} {categories_str:<30}")
-
-  return benchmark_results
+  return benchmark.run_benchmark(
+    models=models_to_process, dataset=args.dataset, output_dir=args.output_dir, benchmark_video=args.benchmark_video, save_plots=args.save_plots
+  )
 
 
 def main() -> None:
@@ -401,16 +251,7 @@ def main() -> None:
     return
 
   if args.benchmark_only:
-    run_benchmark(
-      models_to_process=models_to_process,
-      device=args.device,
-      dataset=args.dataset,
-      output_dir=args.output_dir,
-      thresholds=args.thresholds,
-      benchmark_frames=args.benchmark_frames,
-      benchmark_video=args.benchmark_video,
-      save_plots=args.save_plots,
-    )
+    run_benchmarks(args, models_to_process)
     return
 
   results: list[dict[str, Any]] = []
@@ -428,6 +269,9 @@ def main() -> None:
         save_metrics=args.save_metrics,
         save_reports=args.save_reports,
         conf_threshold=args.conf,
+        run_benchmark=args.run_benchmark,
+        benchmark_frames=args.benchmark_frames,
+        benchmark_thresholds=args.thresholds,
       )
       results.append(model_result)
     except Exception as e:
