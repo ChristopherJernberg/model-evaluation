@@ -18,7 +18,7 @@ class MatchedIoUs:
     """Calculate mean IoU for all matches"""
     if not self.values:
       return 0.0
-    return np.mean(self.values)
+    return float(np.mean(self.values))
 
   def __len__(self) -> int:
     return len(self.values)
@@ -321,7 +321,7 @@ def calculate_precision_recall_curve(
   tp = np.zeros(num_predictions, dtype=float)
   fp = np.zeros(num_predictions, dtype=float)
 
-  matched_gt = {i: set() for i in range(len(all_gt_boxes))}
+  matched_gt: dict[int, set[int]] = {i: set() for i in range(len(all_gt_boxes))}
 
   for i, (frame_idx, pred, _) in enumerate(all_predictions):
     gt_boxes = all_gt_boxes[frame_idx]

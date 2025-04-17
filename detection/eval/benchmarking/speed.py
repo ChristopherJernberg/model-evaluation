@@ -87,22 +87,22 @@ class SpeedBenchmark:
 
         frame_times.append(end_time - start_time)
 
-      avg_time = np.mean(frame_times)
-      fps = 1.0 / avg_time if avg_time > 0 else 0
+      avg_time = float(np.mean(frame_times))
+      fps = 1.0 / avg_time if avg_time > 0 else 0.0
 
       fps_values.append(float(fps))
       inference_times.append(float(avg_time))
 
       cap.release()
 
-    speed_data = SpeedVsThresholdData(thresholds=self.thresholds, fps_values=fps_values, inference_times=inference_times, device=self.device)
+    speed_data = SpeedVsThresholdData(thresholds=self.thresholds.copy(), fps_values=fps_values, inference_times=inference_times, device=self.device)
 
     print(f"\nSpeed benchmarking results for {model_name} ({self.device}):")
     print("Threshold  |  FPS  |  Inference Time (ms)")
     print("-" * 45)
 
     for threshold, fps in zip(self.thresholds, fps_values):
-      inference_time = 1000 / fps if fps > 0 else float('inf')
+      inference_time = 1000.0 / fps if fps > 0 else float('inf')
       print(f"{threshold:.2f}       |  {fps:.1f}  |  {inference_time:.2f} ms")
 
     if plots_dir:

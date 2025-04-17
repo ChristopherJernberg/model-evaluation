@@ -3,9 +3,8 @@ from pathlib import Path
 import cv2
 
 from detection.core.interfaces import BoundingBox, Detection
-from detection.eval.metrics import EvaluationMetrics, evaluate_detections
-from detection.eval.visualization.detection import DetectionVisualizer
-from detection.eval.visualization.plots import PlotVisualizer
+from detection.eval.metrics import EvaluationMetrics, SpeedVsThresholdData, evaluate_detections
+from detection.eval.visualization import DetectionVisualizer, PlotVisualizer
 
 
 class Visualizer:
@@ -13,8 +12,8 @@ class Visualizer:
 
   def __init__(self, output_dirs: dict[str, Path]):
     self.output_dirs = output_dirs
-    self.detection_visualizer = None
-    self.plot_visualizer = None
+    self.detection_visualizer: DetectionVisualizer | None = None
+    self.plot_visualizer: PlotVisualizer | None = None
 
     if "plots" in output_dirs:
       self.plot_visualizer = PlotVisualizer(output_dirs["plots"])
@@ -50,9 +49,9 @@ class Visualizer:
 
       frame_metrics, matched_ious, unmatched_gt = evaluate_detections(frame_gt_boxes, frame_pred_boxes)
 
-      comparison_frame = self.detection_visualizer.create_comparison_frame(frame, frame_gt_boxes, frame_pred_boxes, frame_idx, matched_ious, unmatched_gt)
-
-      self.detection_visualizer.write_frame(comparison_frame)
+      if self.detection_visualizer:
+        comparison_frame = self.detection_visualizer.create_comparison_frame(frame, frame_gt_boxes, frame_pred_boxes, frame_idx, matched_ious, unmatched_gt)
+        self.detection_visualizer.write_frame(comparison_frame)
 
     if self.detection_visualizer:
       self.detection_visualizer.release()
@@ -64,7 +63,7 @@ class Visualizer:
 
     self.plot_visualizer.create_pr_curve(metrics, [optimal_threshold], filename)
 
-  def create_speed_plot(self, speed_data: EvaluationMetrics, optimal_threshold: float, filename: str = "speed_vs_threshold.png") -> None:
+  def create_speed_plot(self, speed_data: SpeedVsThresholdData, optimal_threshold: float, filename: str = "speed_vs_threshold.png") -> None:
     """Create speed vs threshold plot"""
     if not self.plot_visualizer:
       return

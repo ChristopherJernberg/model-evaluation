@@ -1,13 +1,14 @@
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Any
 
 from tqdm.auto import tqdm
 
 from detection.core.interfaces import BoundingBox, Detection
 from detection.core.registry import ModelRegistry
 from detection.eval.benchmarking import SpeedBenchmark
-from detection.eval.metrics import EvaluationMetrics
+from detection.eval.metrics import EvaluationMetrics, SpeedVsThresholdData
 from detection.eval.pipeline.config import EvaluationConfig
 from detection.eval.pipeline.data_loader import DataLoader
 from detection.eval.pipeline.inference import ModelInference
@@ -34,6 +35,7 @@ class PipelineContext:
     self.all_pred_boxes: list[list[list[Detection]]] = []
     self.video_performance_metrics: dict[int, dict] = {}
     self.overall_performance_metrics: dict = {}
+    self.benchmark_results: dict | SpeedVsThresholdData = {}
 
 
 class EvaluationStage(ABC):
@@ -95,7 +97,7 @@ class InferenceStage(EvaluationStage):
         gt_boxes = []
         frame_gt = gt_df[gt_df["frame"] == frame_idx]
         for _, row in frame_gt.iterrows():
-          gt_boxes.append([row["bb_left"], row["bb_top"], row["bb_width"], row["bb_height"]])
+          gt_boxes.append((float(row["bb_left"]), float(row["bb_top"]), float(row["bb_width"]), float(row["bb_height"])))
 
         pred_boxes = self.model_inference.detect(frame)
 
@@ -198,10 +200,14 @@ class MetricsCalculationStage(EvaluationStage):
 
         if video_idx + 1 in context.video_performance_metrics:
           perf_metrics = context.video_performance_metrics[video_idx + 1]
-          video_metrics.avg_inference_time = perf_metrics["avg_inference_time"]
-          video_metrics.fps = perf_metrics["fps"]
+          if hasattr(video_metrics, 'avg_inference_time'):
+            video_metrics.avg_inference_time = perf_metrics["avg_inference_time"]
+          if hasattr(video_metrics, 'fps'):
+            video_metrics.fps = perf_metrics["fps"]
 
-        video_metrics.device = context.config.model_config.device
+        if hasattr(video_metrics, 'device'):
+          video_metrics.device = context.config.model_config.device
+
         context.metrics[video_idx + 1] = video_metrics
         progress_bar.update(1)
 
@@ -215,9 +221,11 @@ class MetricsCalculationStage(EvaluationStage):
       context.all_gt_boxes, all_filtered_pred_boxes, model_name=context.config.model_config.name
     )
 
-    context.combined_metrics.device = context.config.model_config.device
-    if context.overall_performance_metrics:
+    if hasattr(context.combined_metrics, 'device'):
+      context.combined_metrics.device = context.config.model_config.device
+    if hasattr(context.combined_metrics, 'avg_inference_time'):
       context.combined_metrics.avg_inference_time = context.overall_performance_metrics["avg_inference_time"]
+    if hasattr(context.combined_metrics, 'fps'):
       context.combined_metrics.fps = context.overall_performance_metrics["fps"]
 
     if original_pr_curve_data:
@@ -312,7 +320,7 @@ class ReportingStage(EvaluationStage):
 class BenchmarkingStage(EvaluationStage):
   """Stage for benchmarking model performance"""
 
-  def __init__(self, model_registry, output_dir: dict[str, Path]):
+  def __init__(self, model_registry: Any, output_dir: dict[str, Path]):
     self.model_registry = model_registry
     self.output_dir = output_dir
 
@@ -408,8 +416,16 @@ class EvaluationPipeline:
 
   def run(self) -> dict:
     """Run the complete pipeline"""
-    stage_names = ["Loading data", "Running inference", "Calculating metrics", "Creating visualizations", "Generating reports"]
+    stage_name_mapping = {
+        DataLoadingStage: "Loading data",
+        InferenceStage: "Running inference",
+        MetricsCalculationStage: "Calculating metrics",
+        VisualizationStage: "Creating visualizations",
+        ReportingStage: "Generating reports",
+        BenchmarkingStage: "Running benchmarks"
+    }
 
+    stage_names = [stage_name_mapping.get(type(stage), "Unknown stage") for stage in self.stages]
     progress_bar = tqdm(total=len(self.stages), desc="Pipeline progress", position=0, leave=False)
     try:
       for stage, name in zip(self.stages, stage_names):
@@ -419,11 +435,11 @@ class EvaluationPipeline:
 
       self.context.execution_time = time.perf_counter() - self.context.start_time
 
-      mAP = 0
-      ap50 = 0
-      ap75 = 0
-      optimal_precision = 0
-      optimal_recall = 0
+      mAP: float = 0.0
+      ap50: float = 0.0
+      ap75: float = 0.0
+      optimal_precision: float = 0.0
+      optimal_recall: float = 0.0
 
       if self.context.combined_metrics and self.context.combined_metrics.pr_curve_data and "thresholds" in self.context.combined_metrics.pr_curve_data:
         mAP = self.context.combined_metrics.mAP
@@ -440,12 +456,12 @@ class EvaluationPipeline:
           optimal_recall = float(recalls[threshold_idx])
 
       # Get arithmetic means
+      avg_fps: float = 0.0
+      avg_inference_time: float = 0.0
+
       if self.context.metrics:
         avg_fps = sum(m.fps for m in self.context.metrics.values()) / len(self.context.metrics)
         avg_inference_time = sum(m.avg_inference_time for m in self.context.metrics.values()) / len(self.context.metrics)
-      else:
-        avg_fps = 0
-        avg_inference_time = 0
 
       threshold_field_name = "fixed_threshold" if self.context.config.threshold.mode == "fixed" else "optimal_threshold"
 

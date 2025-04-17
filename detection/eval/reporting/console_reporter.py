@@ -37,17 +37,21 @@ class ConsoleReporter:
 
     Args:
         headers: List of header strings
-        rows: List of rows, each row is a list of values
+        rows: List of rows, each row is a list of values or a special string/list "SEPARATOR"
         col_widths: Optional list of column widths (calculated automatically if None)
 
     Returns:
         Formatted table as a string
     """
+
+    def is_separator(row):
+      return (isinstance(row, str) and row == "SEPARATOR") or (isinstance(row, list) and len(row) == 1 and row[0] == "SEPARATOR")
+
+    data_rows = [row for row in rows if not is_separator(row)]
+
     if col_widths is None:
       col_widths = [len(h) + 4 for h in headers]  # Default padding
-      for row in rows:
-        if row == "SEPARATOR":
-          continue
+      for row in data_rows:
         for i, cell in enumerate(row):
           if i < len(col_widths):
             cell_str = str(cell)
@@ -82,7 +86,7 @@ class ConsoleReporter:
     table = [top_border, header_row, header_sep]
 
     for row in rows:
-      if row == "SEPARATOR":
+      if is_separator(row):
         table.append(middle_sep)
         continue
 
@@ -91,18 +95,20 @@ class ConsoleReporter:
         if j >= len(col_widths):
           continue
 
+        cell_str = str(cell)
+
         try:
           if j == 0:
-            formatted_cell = str(cell).ljust(col_widths[j])
+            formatted_cell = cell_str.ljust(col_widths[j])
           elif isinstance(cell, (int, float)):
             if isinstance(cell, int):
               formatted_cell = f"{cell:,}".center(col_widths[j])
             else:
               formatted_cell = f"{cell:.3f}".center(col_widths[j])
           else:
-            formatted_cell = str(cell).center(col_widths[j])
+            formatted_cell = cell_str.center(col_widths[j])
         except Exception:
-          formatted_cell = str(cell).ljust(col_widths[j])
+          formatted_cell = cell_str.ljust(col_widths[j])
 
         formatted_row += f"{formatted_cell}{self.box_chars['v_line']}"
 
@@ -200,7 +206,7 @@ class ConsoleReporter:
             row.append(self._format_value(getattr(results.get(vid, {}), attr, 0), ".3f"))
           rows.append(row)
 
-        rows.append("SEPARATOR")
+        rows.append(["SEPARATOR"])
 
         # Process PR metrics - with defensive checks
         for vid in video_ids:
@@ -241,14 +247,14 @@ class ConsoleReporter:
               row.append(self._format_value(results[vid]._pr_metrics_at_threshold.get(key, 0), ".3f"))
           rows.append(row)
 
-        rows.append("SEPARATOR")
+        rows.append(["SEPARATOR"])
 
         for metric_name, attr in [("True Positives", "true_positives"), ("False Positives", "false_positives"), ("False Negatives", "false_negatives")]:
           row = [metric_name]
           for vid in video_ids:
             frame_metrics = getattr(results.get(vid, {}), 'frame_metrics', None)
             value = getattr(frame_metrics, attr, 0) if frame_metrics else 0
-            row.append(value)
+            row.append(str(value) if isinstance(value, (int, float)) else value)
           rows.append(row)
 
         print(f"\n{self._create_table(headers, rows)}")
@@ -269,13 +275,13 @@ class ConsoleReporter:
           "false_negatives": sum(getattr(getattr(m, 'frame_metrics', None), 'false_negatives', 0) for m in results.values()) / max(len(results), 1),
         }
 
-        combined_tp = sum(getattr(getattr(m, 'frame_metrics', None), 'true_positives', 0) for m in results.values())
-        combined_fp = sum(getattr(getattr(m, 'frame_metrics', None), 'false_positives', 0) for m in results.values())
-        combined_fn = sum(getattr(getattr(m, 'frame_metrics', None), 'false_negatives', 0) for m in results.values())
+        combined_tp = int(sum(getattr(getattr(m, 'frame_metrics', None), 'true_positives', 0) for m in results.values()))
+        combined_fp = int(sum(getattr(getattr(m, 'frame_metrics', None), 'false_positives', 0) for m in results.values()))
+        combined_fn = int(sum(getattr(getattr(m, 'frame_metrics', None), 'false_negatives', 0) for m in results.values()))
 
-        combined_precision = 0
-        combined_recall = 0
-        combined_f1 = 0
+        combined_precision: float = 0
+        combined_recall: float = 0
+        combined_f1: float = 0
 
         if (
           hasattr(combined_metrics, 'pr_curve_data')
@@ -289,12 +295,12 @@ class ConsoleReporter:
           recalls = combined_metrics.pr_curve_data["recalls"]
 
           if len(thresholds) > 0 and len(precisions) == len(thresholds) and len(recalls) == len(thresholds):
-            threshold_idx = min(range(len(thresholds)), key=lambda i: abs(thresholds[i] - conf_threshold))
+            threshold_idx = int(min(range(len(thresholds)), key=lambda i: abs(thresholds[i] - conf_threshold)))
             if 0 <= threshold_idx < len(precisions):
               combined_precision = precisions[threshold_idx]
               combined_recall = recalls[threshold_idx]
               combined_f1 = (
-                2 * (combined_precision * combined_recall) / (combined_precision + combined_recall) if (combined_precision + combined_recall) > 0 else 0
+                2 * (combined_precision * combined_recall) / (combined_precision + combined_recall) if (combined_precision + combined_recall) > 0 else 0.0
               )
 
         print(self._create_header("COMBINED RESULTS", 80))
@@ -306,7 +312,7 @@ class ConsoleReporter:
         for name, avg_key, combined_key in [("mAP (IoU=0.5:0.95)", "mAP", "mAP"), ("AP@0.5", "ap50", "ap50"), ("AP@0.75", "ap75", "ap75")]:
           rows.append([name, self._format_value(avg_metrics[avg_key], ".3f"), self._format_value(getattr(combined_metrics, combined_key, 0), ".3f")])
 
-        rows.append("SEPARATOR")
+        rows.append(["SEPARATOR"])
 
         # PR metrics with safer calculation
         total_p = 0
@@ -328,7 +334,7 @@ class ConsoleReporter:
         for name, avg_val, combined_val in [("Precision", avg_p, combined_precision), ("Recall", avg_r, combined_recall), ("F1 Score", avg_f1, combined_f1)]:
           rows.append([name, self._format_value(avg_val, ".3f"), self._format_value(combined_val, ".3f")])
 
-        rows.append("SEPARATOR")
+        rows.append(["SEPARATOR"])
 
         # Count metrics
         for name, avg_key, combined_val in [
@@ -336,7 +342,7 @@ class ConsoleReporter:
           ("Total False Positives", "false_positives", combined_fp),
           ("Total False Negatives", "false_negatives", combined_fn),
         ]:
-          rows.append([name, self._format_value(avg_metrics[avg_key], ".1f"), combined_val])
+          rows.append([name, self._format_value(avg_metrics[avg_key], ".1f"), str(combined_val)])
 
         print(f"\n{self._create_table(headers, rows)}")
 
