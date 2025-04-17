@@ -1,4 +1,4 @@
-from detection.eval.benchmarking.speed import DEFAULT_BENCHMARK_THRESHOLDS, SpeedBenchmark
+from .speed import DEFAULT_BENCHMARK_THRESHOLDS, SpeedBenchmark
 
 __all__ = [
   'SpeedBenchmark',

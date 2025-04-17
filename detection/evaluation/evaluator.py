@@ -485,9 +485,6 @@ class ModelEvaluator:
         times.append(end_time - start_time)
 
       avg_time = float(np.mean(times))
-      # min_time = float(np.min(times))
-      # max_time = float(np.max(times))
-      # std_time = float(np.std(times))
       fps = float(1.0 / avg_time) if avg_time > 0 else 0.0
 
       speed_data.thresholds.append(float(threshold))
