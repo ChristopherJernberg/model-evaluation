@@ -1,14 +1,12 @@
-from typing import Callable
-
-from detection.core.interfaces import Detector, ModelConfig
+from detection.core.interfaces import Detector, FactoryFunc, ModelConfig
 
 
 class ModelRegistry:
   # Maps model_name -> (factory_function, is_pose_capable, categories)
-  _model_map: dict[str, tuple[Callable, bool, list[str]]] = {}
+  _model_map: dict[str, tuple[FactoryFunc, bool, list[str]]] = {}
 
   @classmethod
-  def register_model(cls, model_name: str, factory_func: Callable, is_pose_capable: bool = False, categories: list[str] | None = None):
+  def register_model(cls, model_name: str, factory_func: FactoryFunc, is_pose_capable: bool = False, categories: list[str] | None = None):
     """Register a specific model with its factory function"""
     categories_list = categories or []
     cls._model_map[model_name] = (factory_func, is_pose_capable, categories_list)
@@ -26,9 +24,15 @@ class ModelRegistry:
       if "categories" in model_info and model_info["categories"]:
         model_categories.extend(model_info["categories"])
 
+      def make_factory(model_cls, name=model_name):
+        def factory(config: ModelConfig) -> Detector:
+          return model_cls(name, device=config.device, conf=config.conf_threshold, iou=config.iou_threshold)
+
+        return factory
+
       cls.register_model(
         model_name,
-        lambda name, device, conf, iou, cls=model_class: cls(name, device=device, conf=conf, iou=iou),
+        make_factory(model_class),
         is_pose_capable,
         model_categories,
       )
@@ -54,8 +58,14 @@ class ModelRegistry:
       supported_models = sorted(cls._model_map.keys())
       raise ValueError(f"\nModel '{model_name}' not supported. Choose from:\n{', '.join(supported_models)}")
 
+    config = ModelConfig(model_name, device, conf_threshold, iou_threshold)
     factory, _, _ = cls._model_map[model_name]
-    return factory(model_name, device, conf_threshold, iou_threshold)
+    model = factory(config)
+
+    if not isinstance(model, Detector):
+      raise TypeError(f"Model '{model_name}' does not implement the Detector protocol")
+
+    return model
 
   @classmethod
   def _discover_models(cls):

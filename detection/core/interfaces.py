@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Protocol, TypeAlias, TypedDict, runtime_checkable
+from typing import Callable, Protocol, TypeAlias, TypedDict, TypeVar, runtime_checkable
 
 import numpy as np
 
@@ -22,32 +22,38 @@ class ModelInfo(TypedDict, total=False):
 class ModelConfig:
   name: str  # model name (e.g., "yolov8m-pose")
   device: str = "mps"  # or "cuda" or "cpu"
-  conf_threshold: float = 0.55
+  conf_threshold: float = 0.0  # Used for inference, set by ThresholdConfig based on mode
   iou_threshold: float = 0.45
 
 
 @runtime_checkable
-class Detector(Protocol):
-  """Base protocol for object detection"""
+class BaseModel(Protocol):
+  """Base protocol for all models, regardless of capabilities"""
 
   model_name: str
 
-  def detect(self, frame: np.ndarray) -> list[Detection]: ...
+
+@runtime_checkable
+class Detector(BaseModel, Protocol):
+  """Protocol for object detection"""
+
+  def detect(self, image: np.ndarray) -> list[Detection]: ...
 
 
 @runtime_checkable
-class PoseDetector(Protocol):
+class PoseDetector(BaseModel, Protocol):
   """Protocol for pose detection"""
 
-  model_name: str
-
-  def detect_pose(self, frame: np.ndarray) -> list[tuple[Keypoints, Detection]]: ...
+  def detect_pose(self, image: np.ndarray) -> list[tuple[Keypoints, Detection]]: ...
 
 
 @runtime_checkable
-class SegmentationDetector(Protocol):
+class SegmentationDetector(BaseModel, Protocol):
   """Protocol for segmentation"""
 
-  model_name: str
+  def detect_segmentation(self, image: np.ndarray) -> np.ndarray: ...
 
-  def detect_segmentation(self, frame: np.ndarray) -> np.ndarray: ...
+
+# Factory type definitions
+T = TypeVar("T", bound=Detector)
+FactoryFunc = Callable[[ModelConfig], T]

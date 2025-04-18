@@ -417,12 +417,12 @@ class EvaluationPipeline:
   def run(self) -> dict:
     """Run the complete pipeline"""
     stage_name_mapping = {
-        DataLoadingStage: "Loading data",
-        InferenceStage: "Running inference",
-        MetricsCalculationStage: "Calculating metrics",
-        VisualizationStage: "Creating visualizations",
-        ReportingStage: "Generating reports",
-        BenchmarkingStage: "Running benchmarks"
+      DataLoadingStage: "Loading data",
+      InferenceStage: "Running inference",
+      MetricsCalculationStage: "Calculating metrics",
+      VisualizationStage: "Creating visualizations",
+      ReportingStage: "Generating reports",
+      BenchmarkingStage: "Running benchmarks",
     }
 
     stage_names = [stage_name_mapping.get(type(stage), "Unknown stage") for stage in self.stages]
